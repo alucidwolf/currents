@@ -22,9 +22,16 @@
       </div>
       <div class="hud__meta">
         <span id="hud-seed"></span>
-        <span class="hud__dim">H hints &middot; F stats</span>
+        <span class="hud__dim">1&ndash;4 or Tab animal &middot; H hints &middot; F stats</span>
       </div>
     </div>
+
+    <!--
+      Outside the HUD on purpose: this is momentary feedback for something you
+      just did, so it should still appear when the hints have faded out or been
+      switched off.
+    -->
+    <div id="announce" class="announce" aria-live="polite"></div>
 
     <pre id="stats" class="stats" hidden></pre>
 

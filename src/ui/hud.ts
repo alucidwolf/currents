@@ -22,19 +22,25 @@ export interface HudStats {
   target: string | null;
 }
 
+/** How long a swapped-in animal's name stays up. */
+const ANNOUNCE_SECONDS = 1.6;
+
 export class Hud {
   private readonly root: HTMLElement;
   private readonly seedEl: HTMLElement;
   private readonly statsEl: HTMLElement;
+  private readonly announceEl: HTMLElement;
 
   private hintsHidden = false;
   private statsVisible = false;
   private statsTimer = 0;
+  private announceTimer = 0;
 
   constructor() {
     this.root = document.getElementById("hud")!;
     this.seedEl = document.getElementById("hud-seed")!;
     this.statsEl = document.getElementById("stats")!;
+    this.announceEl = document.getElementById("announce")!;
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "h" || event.key === "H") {
@@ -57,8 +63,20 @@ export class Hud {
     this.root.dataset.faded = "true";
   }
 
+  /** Name the animal that was just swapped in, briefly. */
+  announce(text: string): void {
+    this.announceEl.textContent = text;
+    this.announceEl.dataset.show = "true";
+    this.announceTimer = ANNOUNCE_SECONDS;
+  }
+
   update(dt: number, idleTime: number, stats: HudStats): void {
     this.root.dataset.faded = String(idleTime > FADE_AFTER);
+
+    if (this.announceTimer > 0) {
+      this.announceTimer -= dt;
+      if (this.announceTimer <= 0) this.announceEl.dataset.show = "false";
+    }
 
     if (!this.statsVisible) return;
 

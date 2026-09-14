@@ -73,6 +73,39 @@ function eyePair(
   }));
 }
 
+/**
+ * Release every buffer and program hanging off a rig.
+ *
+ * Walks the tree rather than listing parts by hand. The species do not all
+ * build the same way — a turtle is a shell plus four separately pivoted
+ * flippers — and a hand-written list had already quietly missed the flipper
+ * geometries. That cost nothing while an animal was chosen once at startup and
+ * kept for the session; it became a leak on the frame animals could be swapped
+ * mid-swim, which is the sort of thing a new feature turns from harmless into a
+ * bug somewhere else entirely.
+ */
+function disposeTree(root: THREE.Object3D): void {
+  const seen = new Set<THREE.Material | THREE.BufferGeometry>();
+
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+
+    if (mesh.geometry && !seen.has(mesh.geometry)) {
+      seen.add(mesh.geometry);
+      mesh.geometry.dispose();
+    }
+
+    // Shared between parts often enough to be worth the set.
+    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      if (material && !seen.has(material)) {
+        seen.add(material);
+        material.dispose();
+      }
+    }
+  });
+}
+
 function rigFromSingleMesh(
   geometry: THREE.BufferGeometry,
   swim: SwimMaterial,
@@ -89,8 +122,7 @@ function rigFromSingleMesh(
       swim.setTime(elapsed);
     },
     dispose() {
-      geometry.dispose();
-      swim.material.dispose();
+      disposeTree(root);
     },
   };
 }
@@ -670,9 +702,7 @@ const turtle: SpeciesDef = {
         }
       },
       dispose() {
-        geometry.dispose();
-        swim.material.dispose();
-        flipperMaterial.dispose();
+        disposeTree(root);
       },
     };
   },

@@ -32,6 +32,7 @@ npm run dev      # http://127.0.0.1:5173
 | **Scroll** | Zoom in and out. |
 | **Right-hold** | Steer: the animal curves toward your cursor. Release and it goes back to wandering on its own. |
 | **Arrow keys** | Steer without the mouse — left and right turn, up and down climb and dive. Speed never changes; the keys only change where the animal is pointing. Let go and it levels off and goes back to wandering. |
+| **1**–**4**, **Tab** | Swap animal mid-swim. Numbers pick one outright, Tab walks the list (Shift+Tab backwards). Position, heading and speed all carry over, so the new animal picks up exactly where the last one was. |
 | **H** | Toggle the control hints. |
 | **F** | Toggle the stats overlay (fps, draw calls, chunk count, depth). |
 | **P** | Toggle the diorama pass — depth of field, grade and vignette — to compare, or to claw back frame time. |
@@ -53,7 +54,7 @@ of being dropped mid-lean.
 | --- | --- |
 | `#ambient` | Skip the menu, pick an animal at random, start swimming. **This is the link to leave open on a second monitor.** |
 | `#seed=abc123` | Rebuild a specific ocean exactly. The current seed is shown bottom-left. |
-| `#species=manta` | Start as a named animal (`whale`, `turtle`, `manta`, `dolphin`), skipping the menu. |
+| `#species=manta` | Start as a named animal (`whale`, `turtle`, `manta`, `dolphin`), skipping the menu. Swapping animals in game rewrites this, so a reload keeps whichever one you are currently being. |
 
 Fragments combine: `#seed=reef7&species=manta`.
 

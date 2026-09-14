@@ -88,6 +88,32 @@ body {
   opacity: 0.62;
 }
 
+/*
+  The name of the animal you just switched to. Centred low, out of the way of
+  the creature itself, and gone again before it becomes part of the furniture.
+*/
+.announce {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 14%;
+  text-align: center;
+  pointer-events: none;
+  color: var(--ink);
+  font-size: 1.05rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 12px rgb(0 0 0 / 45%);
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+
+.announce[data-show="true"] {
+  opacity: 1;
+  /* Snap in, drift out — the arrival should register, the exit should not. */
+  transition: opacity 0.14s ease;
+}
+
 .stats {
   position: fixed;
   top: clamp(0.9rem, 2.5vw, 1.6rem);

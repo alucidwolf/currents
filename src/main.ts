@@ -97,7 +97,32 @@ hud.setSeed(formatSeed(worldSeed));
 let creature: CreatureRig | null = null;
 let species: SpeciesDef | null = null;
 
-function adoptSpecies(chosen: SpeciesDef): void {
+/**
+ * Seconds a swapped-in animal takes to settle to full size.
+ *
+ * Only long enough to stop the change being a hard cut. Everything else about
+ * the swimmer carries over untouched — position, heading, speed, the trail the
+ * autopilot is steering by — so the new animal picks up exactly mid-stroke
+ * where the old one was, and the swap reads as the same swim continuing.
+ */
+const SWAP_SETTLE = 0.42;
+let swapSettle = 1;
+
+/**
+ * Keep the current animal in the URL.
+ *
+ * `replaceState` rather than assigning `location.hash`: assigning pushes a
+ * history entry for every swap, so Back would walk you through each one instead
+ * of leaving the page.
+ */
+function rememberSpecies(id: string): void {
+  const parts = location.hash.replace(/^#/, "").split("&").filter(Boolean);
+  const kept = parts.filter((part) => !/^species=/i.test(part));
+  kept.push(`species=${id}`);
+  history.replaceState(null, "", `#${kept.join("&")}`);
+}
+
+function adoptSpecies(chosen: SpeciesDef, announce = false): void {
   creature?.dispose();
   creature?.root.removeFromParent();
 
@@ -114,7 +139,43 @@ function adoptSpecies(chosen: SpeciesDef): void {
 
   swimmer.object.add(creature.root);
   rig.setPreferredDistance(chosen.viewDistance);
+  rememberSpecies(chosen.id);
+
+  if (announce) {
+    swapSettle = 0;
+    hud.announce(chosen.name);
+  }
 }
+
+/**
+ * Swap animals mid-swim.
+ *
+ * Numbers pick one outright; Tab walks along the list for anyone who would
+ * rather not remember which is which. Modified presses are left to the browser,
+ * so Ctrl+Tab and friends still do what they always did.
+ */
+function bindSpeciesKeys(): void {
+  window.addEventListener("keydown", (event) => {
+    if (!species) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const step = event.shiftKey ? -1 : 1;
+      const next = (SPECIES.indexOf(species) + step + SPECIES.length) % SPECIES.length;
+      adoptSpecies(SPECIES[next]!, true);
+      return;
+    }
+
+    const pick = Number.parseInt(event.key, 10);
+    if (pick >= 1 && pick <= SPECIES.length) {
+      const chosen = SPECIES[pick - 1]!;
+      if (chosen !== species) adoptSpecies(chosen, true);
+    }
+  });
+}
+
+bindSpeciesKeys();
 
 // -- steering ----------------------------------------------------------------
 
@@ -209,6 +270,12 @@ const loop = createLoop((dt, elapsed) => {
 
     const rate = swimmer.speed / SWIM.cruiseSpeed;
     creature.update(elapsed, rate * species.speedScale);
+
+    if (swapSettle < 1) {
+      swapSettle = Math.min(1, swapSettle + dt / SWAP_SETTLE);
+      const eased = swapSettle * swapSettle * (3 - 2 * swapSettle);
+      creature.root.scale.setScalar(0.74 + eased * 0.26);
+    }
   }
 
   chunks.update(swimmer.position);
