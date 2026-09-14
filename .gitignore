@@ -7,3 +7,4 @@ tools/.reef-check.mjs
 .DS_Store
 Thumbs.db
 *.log
+tools/.body-check.mjs

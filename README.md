@@ -22,6 +22,7 @@ npm run dev      # http://127.0.0.1:5173
 | `npm run typecheck` | Types only |
 | `npm run verify:wander` | Headless check of the ambient wander (see below) |
 | `npm run verify:reef` | Headless survey of how life is distributed on the seabed |
+| `npm run verify:bodies` | Headless check that the animals are solid and face outward |
 
 ## Controls
 
@@ -141,6 +142,27 @@ animals with distinct swimming styles, no bones, no skinning.
 **Bodies are countershaded** — dark above, pale below — via a baked colour
 attribute keyed to which way each surface faces. That keeps them readable from
 any angle instead of collapsing into silhouette against open water.
+
+**Bodies are closed, and that is load-bearing.** Back faces are culled, so a
+hole in an animal is not a missing patch of skin — it is a window. Through it
+you see the far wall's inside, whose faces point away from you and are
+discarded, and so you see straight out the other side. Every body here comes
+from a profile callback, which makes "does it close" a property of a function's
+limit rather than of anything visible in the shape: a tail tapering to a
+plausible peduncle instead of to a mathematical point leaves a hole, and looks
+entirely correct from every angle except the one that points into it.
+
+Winding matters for the same reason and hides even better. An inside-out body
+still draws a correct silhouette out of the far wall's interior, and since
+vertex colours travel with position, roughly the right colours too — it loses
+its form without ever looking broken. Mirrored parts are the specific trap,
+because mirroring reverses winding, so a builder taking a left/right parameter
+gets one side right and the other exactly backwards.
+
+Neither is judged by eye. Parts are mirrored as a whole rather than by negating
+a coordinate, every closed part asserts its own orientation after construction
+via its signed volume, and `npm run verify:bodies` checks each shared builder
+and each finished animal for open edges and for facing the right way.
 
 **Draw calls stay flat.** All of a chunk's coral, rock and kelp merge into a
 single geometry, so a whole reef is one draw call; every fish in the world

@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "verify:wander": "esbuild tools/wander-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.wander-check.mjs && node tools/.wander-check.mjs",
-    "verify:reef": "esbuild tools/reef-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.reef-check.mjs && node tools/.reef-check.mjs"
+    "verify:reef": "esbuild tools/reef-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.reef-check.mjs && node tools/.reef-check.mjs",
+    "verify:bodies": "esbuild tools/body-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.body-check.mjs && node tools/.body-check.mjs"
   },
   "dependencies": {
     "three": "^0.186.0"

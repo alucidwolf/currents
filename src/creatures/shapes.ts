@@ -62,11 +62,22 @@ function superellipse(
   out.y = b * Math.sign(s) * Math.pow(Math.abs(s), e);
 }
 
+/** Below this, a ring has collapsed to the axis and needs no cap. */
+const CLOSED_RADIUS = 1e-4;
+
 /**
  * A closed tube whose cross-section is an ellipse that varies along its length.
  *
  * This one function produces every animal body in the game; the difference
  * between a whale and a dolphin is entirely in the profile callback.
+ *
+ * Closed is load-bearing, not descriptive. Back faces are culled, so a hole in
+ * a body is not a missing patch of skin — it is a window, and through it you
+ * see the far wall's inside, whose faces point away and are discarded. A
+ * dolphin whose tail stock tapers to a plausible peduncle rather than to a
+ * mathematical point therefore shows you both of its eyes from directly
+ * behind. So either end is capped whenever its profile does not actually
+ * reach zero.
  */
 export function buildBody(profile: BodyProfile): THREE.BufferGeometry {
   const { length, segments, radial } = profile;
@@ -97,10 +108,25 @@ export function buildBody(profile: BodyProfile): THREE.BufferGeometry {
       const c = (s + 1) * radial + i;
       const d = (s + 1) * radial + next;
 
-      indices.push(a, c, b);
-      indices.push(b, c, d);
+      // Wound so the face normal points away from the axis. Rings run
+      // counter-clockwise in XY and z increases with s, which makes a -> b -> d
+      // -> c the outward loop around each quad.
+      indices.push(a, b, c);
+      indices.push(b, d, c);
     }
   }
+
+  const tail = profile.radius(0);
+  if (Math.max(Math.abs(tail.x), Math.abs(tail.y)) > CLOSED_RADIUS) {
+    capRing(positions, indices, 0, radial, true);
+  }
+
+  const nose = profile.radius(1);
+  if (Math.max(Math.abs(nose.x), Math.abs(nose.y)) > CLOSED_RADIUS) {
+    capRing(positions, indices, segments * radial, radial, false);
+  }
+
+  ensureOutward(positions, indices);
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -166,8 +192,72 @@ function foilRing(
 function stitchRings(indices: number[], ringA: number, ringB: number, count: number): void {
   for (let i = 0; i < count; i++) {
     const next = (i + 1) % count;
-    indices.push(ringA + i, ringB + i, ringA + next);
-    indices.push(ringA + next, ringB + i, ringB + next);
+    indices.push(ringA + i, ringA + next, ringB + i);
+    indices.push(ringA + next, ringB + next, ringB + i);
+  }
+}
+
+/**
+ * Reflect a part across one axis, reversing its winding to match.
+ *
+ * Mirroring positions alone turns a surface inside-out, which is the whole
+ * trap: the reflected part looks right in outline and is culled away in the
+ * render.
+ */
+function mirrorAlong(positions: number[], indices: number[], axis: "x" | "y"): void {
+  const offset = axis === "x" ? 0 : 1;
+  for (let i = offset; i < positions.length; i += 3) positions[i] = -positions[i]!;
+
+  for (let i = 0; i < indices.length; i += 3) {
+    const swap = indices[i + 1]!;
+    indices[i + 1] = indices[i + 2]!;
+    indices[i + 2] = swap;
+  }
+}
+
+/**
+ * Make a closed surface face outward, reversing every triangle if it does not.
+ *
+ * Which way a part faces is easy to get wrong and nearly invisible when you do:
+ * back faces are culled, so an inside-out body still draws a correct silhouette
+ * out of the far wall's interior, losing its form without ever looking broken.
+ * Mirrored parts are worse — mirroring reverses winding, so a builder that
+ * takes a side parameter gets one side right and the other exactly backwards.
+ *
+ * So rather than deriving the winding by hand for each builder and each
+ * mirrored variant, every part asserts it afterwards. By the divergence theorem
+ * a closed surface wound outward encloses positive volume; a negative total
+ * means the whole thing is reversed. This runs once per prototype at build
+ * time and costs nothing that matters.
+ *
+ * It corrects a surface that is uniformly reversed. It cannot rescue one whose
+ * faces disagree among themselves — that is a real defect in the builder, and
+ * verify:bodies is what catches it.
+ */
+function ensureOutward(positions: number[], indices: number[]): void {
+  let total = 0;
+
+  for (let i = 0; i < indices.length; i += 3) {
+    const a = indices[i]! * 3;
+    const b = indices[i + 1]! * 3;
+    const c = indices[i + 2]! * 3;
+
+    const ax = positions[a]!, ay = positions[a + 1]!, az = positions[a + 2]!;
+    const bx = positions[b]!, by = positions[b + 1]!, bz = positions[b + 2]!;
+    const cx = positions[c]!, cy = positions[c + 1]!, cz = positions[c + 2]!;
+
+    total +=
+      ax * (by * cz - bz * cy) -
+      ay * (bx * cz - bz * cx) +
+      az * (bx * cy - by * cx);
+  }
+
+  if (total >= 0) return;
+
+  for (let i = 0; i < indices.length; i += 3) {
+    const swap = indices[i + 1]!;
+    indices[i + 1] = indices[i + 2]!;
+    indices[i + 2] = swap;
   }
 }
 
@@ -243,6 +333,10 @@ export function buildFoil(options: {
   const indices: number[] = [];
   const ringCount = chordSegments * 2;
 
+  // Always built extending the positive way, then mirrored as a whole. Baking
+  // the sign into the ring positions while leaving the winding alone is what
+  // made one flipper of every pair disagree with its own end caps: mirroring
+  // reverses winding, and only some of this was compensating for it.
   for (let i = 0; i <= stations; i++) {
     const s = i / stations;
     foilRing(
@@ -250,7 +344,7 @@ export function buildFoil(options: {
       chord(s),
       thickness(s),
       chordSegments,
-      span * sign * s,
+      span * s,
       rise ? rise(s) : 0,
       sweep(s),
       spanAxis,
@@ -261,8 +355,13 @@ export function buildFoil(options: {
     stitchRings(indices, i * ringCount, (i + 1) * ringCount, ringCount);
   }
 
-  capRing(positions, indices, 0, ringCount, sign > 0);
-  capRing(positions, indices, stations * ringCount, ringCount, sign < 0);
+  // Opposite flags because the two ends face opposite ways. Which of them is
+  // "out" is settled by ensureOutward below.
+  capRing(positions, indices, 0, ringCount, true);
+  capRing(positions, indices, stations * ringCount, ringCount, false);
+
+  if (sign < 0) mirrorAlong(positions, indices, spanAxis);
+  ensureOutward(positions, indices);
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -339,6 +438,8 @@ export function buildFluke(options: {
   capRing(positions, indices, 0, ringCount, false);
   capRing(positions, indices, rings * ringCount, ringCount, true);
 
+  ensureOutward(positions, indices);
+
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.setIndex(indices);
@@ -351,6 +452,13 @@ export function buildFluke(options: {
  *
  * Generated as a grid rather than a fan so the vertex shader has enough
  * spanwise resolution to ripple the wings convincingly.
+ *
+ * Two sheets, an upper and a shallower lower, joined all the way round. The
+ * join is not decoration: along the wing edges the two sheets meet at zero
+ * thickness on their own, but at the nose and tail the silhouette narrows to
+ * nothing in x while the sheets still stand apart in y, so without a rim they
+ * gape open there. With back faces culled that gap is a window straight through
+ * the animal.
  */
 export function buildWingDisc(options: {
   span: number;
@@ -363,54 +471,64 @@ export function buildWingDisc(options: {
   const positions: number[] = [];
   const indices: number[] = [];
 
-  for (let r = 0; r <= rows; r++) {
-    const v = r / rows;
-    const z = (v - 0.5) * length;
-    // Diamond silhouette: widest just forward of centre, swept back at the tips.
-    const widthAt = Math.sin(Math.PI * Math.pow(v, 0.85)) * span * 0.5;
+  const stride = cols + 1;
+  const perSheet = stride * (rows + 1);
 
-    for (let c = 0; c <= cols; c++) {
-      const u = c / cols;
-      const x = (u - 0.5) * 2 * widthAt;
-      const taper = 1 - Math.abs(u - 0.5) * 2;
-      const y = Math.pow(Math.max(taper, 0), 1.6) * thickness;
-      positions.push(x, y, z);
+  /** Upper sheet first, then the lower one at the same x and z. */
+  for (const sheet of [1, -0.45]) {
+    for (let r = 0; r <= rows; r++) {
+      const v = r / rows;
+      const z = (v - 0.5) * length;
+      // Diamond silhouette: widest just forward of centre, swept back at the tips.
+      const widthAt = Math.sin(Math.PI * Math.pow(v, 0.85)) * span * 0.5;
+
+      for (let c = 0; c <= cols; c++) {
+        const u = c / cols;
+        const x = (u - 0.5) * 2 * widthAt;
+        const taper = 1 - Math.abs(u - 0.5) * 2;
+        const y = Math.pow(Math.max(taper, 0), 1.6) * thickness * sheet;
+        positions.push(x, y, z);
+      }
     }
   }
 
-  const stride = cols + 1;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const a = r * stride + c;
       const b = a + 1;
       const d = a + stride;
       const e = d + 1;
+
       indices.push(a, d, b, b, d, e);
+      // The lower sheet faces the other way, so its triangles are reversed.
+      const o = perSheet;
+      indices.push(b + o, d + o, a + o, e + o, d + o, b + o);
     }
   }
 
-  const top = new THREE.BufferGeometry();
-  top.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  top.setIndex(indices);
-  top.computeVertexNormals();
+  // Walk the grid's perimeter once and bridge the two sheets across it. Where
+  // they already coincide the bridge triangles collapse to zero area and cost
+  // nothing; where they do not, this is the rim.
+  const perimeter: number[] = [];
+  for (let c = 0; c <= cols; c++) perimeter.push(c);
+  for (let r = 1; r <= rows; r++) perimeter.push(r * stride + cols);
+  for (let c = cols - 1; c >= 0; c--) perimeter.push(rows * stride + c);
+  for (let r = rows - 1; r >= 1; r--) perimeter.push(r * stride);
 
-  // Mirror for the underside so the ray is solid from every angle.
-  const bottom = top.clone();
-  const bottomPos = bottom.getAttribute("position") as THREE.BufferAttribute;
-  for (let i = 0; i < bottomPos.count; i++) {
-    bottomPos.setY(i, -bottomPos.getY(i) * 0.45);
+  for (let i = 0; i < perimeter.length; i++) {
+    const a = perimeter[i]!;
+    const b = perimeter[(i + 1) % perimeter.length]!;
+    indices.push(a, b + perSheet, b);
+    indices.push(a, a + perSheet, b + perSheet);
   }
-  const bottomIndex = bottom.getIndex()!;
-  const flipped = Array.from(bottomIndex.array);
-  for (let i = 0; i < flipped.length; i += 3) {
-    const tmp = flipped[i]!;
-    flipped[i] = flipped[i + 2]!;
-    flipped[i + 2] = tmp;
-  }
-  bottom.setIndex(flipped);
-  bottom.computeVertexNormals();
 
-  return mergeGeometries([top, bottom]);
+  ensureOutward(positions, indices);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 /** Minimal position-and-index geometry merge. Enough for our own builders. */
