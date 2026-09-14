@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { WORLD } from "../core/config";
-import { chunkRng, mulberry32, pick, randRange } from "../core/rng";
+import { chunkRng, mulberry32, randRange } from "../core/rng";
 import type { Rng } from "../core/rng";
 import { buildBody } from "../creatures/shapes";
 import type { PointOfInterest } from "../creatures/wander";
+import { ColonyKind, PropKind, collectColonies } from "./colonies";
 import { buildShipwreck, shipwreckForChunk } from "./landmarks";
 import type { Terrain } from "./terrain";
 
@@ -25,21 +26,32 @@ const CORAL_COLORS = [0xe8836b, 0xf0a06e, 0xdc6a85, 0xeebb6d, 0xa87fc6, 0xe06a72
 // Lifted well off black: against the fog the earlier greens read as
 // silhouetted poles rather than as plants.
 const KELP_COLORS = [0x82a955, 0x93b962, 0x6f9749, 0xa3c46c, 0x7a9d4d];
-// Kept dark against the bright sand. Boulders are the main source of value
-// contrast on the seabed, and pale ones let the whole floor go flat.
-const ROCK_COLORS = [0x646f7b, 0x55606b, 0x73808d];
+// Kept dark, but not all one grey. A boulder is the highest-contrast thing on
+// a pale seabed, so a field of identical slate-blue ones is the first thing the
+// eye lands on — and reading the floor as "rocks scattered about" is exactly
+// the failure that clustering is meant to fix. The warmer, sandier tones sit
+// back into the ground instead of jumping out of it.
+const ROCK_COLORS = [0x646f7b, 0x55606b, 0x73808d, 0x7c7566, 0x8a8271, 0x6b6a63];
+// Softer than the small coral — several metres of one hue turns garish at the
+// reef palette's saturation — but no darker. A structure is usually the largest
+// mass in the view and half of it faces away from the sun, so a base colour
+// chosen to look right on a swatch reads as a black lump on the seabed.
+const STRUCTURE_COLORS = [0xd98a6e, 0xcf6b82, 0xe0a05e, 0xab88ca, 0xcf7d5f, 0xc08da4];
 
 /**
- * Attempts per chunk, not placements. The reef-density field rejects most of
- * them on bare sand and lets nearly all of them through in a garden, which is
- * what produces dense reefs and open flats instead of an even sprinkle.
+ * Strays: props placed at random across the whole chunk rather than as part of
+ * a colony.
+ *
+ * Kept deliberately thin. Their job is to stop the gap between two colonies
+ * being conspicuously sterile — a lone coral head on open sand reads as natural,
+ * while a uniform sprinkle of them is exactly the litter the colonies replaced.
  */
-const CORAL_ATTEMPTS = 30;
-const ROCK_ATTEMPTS = 12;
-const KELP_ATTEMPTS = 24;
+const STRAY_ATTEMPTS = 7;
 
 /** Nothing grows on anything steeper than this. */
 const MAX_SLOPE = 0.55;
+/** Rock is geology, not biology, and will happily sit on a much steeper face. */
+const MAX_ROCK_SLOPE = 0.78;
 
 interface Accumulator {
   positions: number[];
@@ -65,36 +77,49 @@ interface Spot {
 
 // -- prop builders -----------------------------------------------------------
 
+/**
+ * Push a geometry's vertices in and out by a smooth function of *position*.
+ *
+ * The displacement must derive from where a vertex is, never from its index.
+ * Several of the geometries used here duplicate vertices — polyhedra are
+ * non-indexed, so every triangle carries its own copy of each corner, and a
+ * sphere duplicates the ring along its UV seam. Displacing those copies
+ * independently tears the surface into loose shards or opens a crack down one
+ * side. Deriving the offset from the position means coincident vertices always
+ * move together and the surface stays welded.
+ */
+function roughen(
+  geometry: THREE.BufferGeometry,
+  rng: Rng,
+  amount: number,
+  frequency = 4.4,
+): void {
+  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const phaseX = rng() * Math.PI * 2;
+  const phaseY = rng() * Math.PI * 2;
+  const phaseZ = rng() * Math.PI * 2;
+
+  const v = new THREE.Vector3();
+  for (let i = 0; i < position.count; i++) {
+    v.set(position.getX(i), position.getY(i), position.getZ(i));
+    const lump =
+      1 +
+      amount *
+        (Math.sin(v.x * frequency + phaseX) +
+          0.82 * Math.sin(v.y * frequency * 1.29 + phaseY) +
+          0.7 * Math.sin(v.z * frequency * 0.85 + phaseZ));
+    position.setXYZ(i, v.x * lump, v.y * lump, v.z * lump);
+  }
+}
+
 /** A lumpy boulder. Rigid: flex stays at zero. */
 function makeBoulder(rng: Rng): THREE.BufferGeometry {
   // Detail 1 gives 80 faces rather than 20 — still obviously a rock, but no
   // longer an obvious icosahedron. Polyhedron geometries are non-indexed, so
   // these keep hard facets even under the smooth-shaded decor material.
   const geometry = new THREE.IcosahedronGeometry(1, 1);
-  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
-
-  // Lumpiness must be a function of *direction*, not of vertex index. These
-  // geometries are non-indexed, so every triangle carries its own copy of each
-  // corner; displacing those copies independently tears the rock into loose
-  // shards. Deriving the offset from the position means coincident corners
-  // always move together and the surface stays welded.
-  const phaseX = rng() * Math.PI * 2;
-  const phaseY = rng() * Math.PI * 2;
-  const phaseZ = rng() * Math.PI * 2;
-  const squash = randRange(rng, 0.62, 0.85);
-
-  const v = new THREE.Vector3();
-  for (let i = 0; i < position.count; i++) {
-    v.set(position.getX(i), position.getY(i), position.getZ(i));
-    const lump =
-      0.84 +
-      0.16 * Math.sin(v.x * 4.1 + phaseX) +
-      0.13 * Math.sin(v.y * 5.3 + phaseY) +
-      0.11 * Math.sin(v.z * 3.7 + phaseZ);
-    v.multiplyScalar(lump);
-    position.setXYZ(i, v.x, v.y * squash, v.z);
-  }
-
+  roughen(geometry, rng, 0.15, 4.1);
+  geometry.scale(1, randRange(rng, 0.62, 0.85), 1);
   geometry.computeVertexNormals();
   return geometry;
 }
@@ -108,8 +133,12 @@ function makeStalk(
 ): THREE.BufferGeometry {
   const stalk = buildBody({
     length: height,
-    segments: 6,
-    radial: 8,
+    // Low on purpose. A coral clump is a dozen of these, and clumps are now the
+    // densest thing in the world — the survey's peak chunk is where the whole
+    // streaming budget gets spent, so the unit cost of a branch matters far
+    // more than its silhouette at the distance one is ever seen from.
+    segments: 5,
+    radial: 6,
     radius(t) {
       // t = 0 is the base of the tube, t = 1 the tip.
       const r = baseRadius + (tipRadius - baseRadius) * Math.pow(t, 0.8);
@@ -134,7 +163,7 @@ function makeStalk(
  */
 function makeBranchingCoral(rng: Rng): THREE.BufferGeometry {
   const branches: THREE.BufferGeometry[] = [];
-  const count = 4 + Math.floor(rng() * 5);
+  const count = 3 + Math.floor(rng() * 4);
 
   for (let i = 0; i < count; i++) {
     const height = randRange(rng, 0.9, 2.4);
@@ -158,24 +187,9 @@ function makeBranchingCoral(rng: Rng): THREE.BufferGeometry {
 
 /** Brain coral: a low rounded dome, the calm counterpoint to the branches. */
 function makeBrainCoral(rng: Rng): THREE.BufferGeometry {
-  const dome = new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62);
+  const dome = new THREE.SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.62);
+  roughen(dome, rng, 0.035, 5.2);
   dome.scale(1, randRange(rng, 0.5, 0.85), randRange(rng, 0.82, 1.18));
-
-  // Same rule as the boulders: the wobble is derived from position so the
-  // duplicated vertices along the sphere's UV seam move identically and no
-  // crack opens up down one side.
-  const phase = rng() * Math.PI * 2;
-  const position = dome.getAttribute("position") as THREE.BufferAttribute;
-  const v = new THREE.Vector3();
-
-  for (let i = 0; i < position.count; i++) {
-    v.set(position.getX(i), position.getY(i), position.getZ(i));
-    const wobble =
-      0.94 + 0.07 * Math.sin(v.x * 5.2 + phase) + 0.06 * Math.sin(v.z * 4.4 - phase);
-    v.multiplyScalar(wobble);
-    position.setXYZ(i, v.x, v.y, v.z);
-  }
-
   dome.computeVertexNormals();
   return dome;
 }
@@ -213,7 +227,7 @@ function makeFanCoral(rng: Rng): THREE.BufferGeometry {
 /** Tube coral: a tight clump of thin vertical pipes. */
 function makeTubeCoral(rng: Rng): THREE.BufferGeometry {
   const tubes: THREE.BufferGeometry[] = [];
-  const count = 5 + Math.floor(rng() * 6);
+  const count = 4 + Math.floor(rng() * 4);
 
   for (let i = 0; i < count; i++) {
     const height = randRange(rng, 0.5, 1.7);
@@ -235,6 +249,166 @@ function makeCoral(rng: Rng): THREE.BufferGeometry {
   return makeFanCoral(rng);
 }
 
+// -- large structures --------------------------------------------------------
+
+/**
+ * The anchor of a reef colony: several metres tall, and the reason a garden
+ * reads as a place rather than a patch of ground with things on it.
+ *
+ * Everything else down here tops out around waist height on a swimming whale,
+ * which is why the floor felt flat no matter how much was scattered on it — a
+ * scene needs something to swim *over* and *around*, not just past. These are
+ * built at roughly three to five units tall in their own space and placed at
+ * around 1.5x, so a good one stands eight metres off the seabed.
+ */
+
+/** A coral head: lumpy lobes stacked into a boulder-sized mass of living rock. */
+function makeBommie(rng: Rng): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const lobes = 3 + Math.floor(rng() * 3);
+
+  let radius = randRange(rng, 1.3, 1.8);
+  let height = 0;
+
+  for (let i = 0; i < lobes; i++) {
+    const lobe = new THREE.SphereGeometry(radius, 12, 8);
+    roughen(lobe, rng, 0.085, 3.2 / radius);
+    lobe.scale(1, randRange(rng, 0.78, 1.15), randRange(rng, 0.85, 1.15));
+
+    // Each lobe sits on the one below, nudged sideways so the stack leans and
+    // bulges instead of rising as a column of beads.
+    const drift = radius * randRange(rng, 0, 0.42);
+    const around = rng() * Math.PI * 2;
+    lobe.translate(Math.cos(around) * drift, height + radius * 0.72, Math.sin(around) * drift);
+
+    parts.push(lobe);
+    // Lobes overlap heavily. Spaced any further apart they read as a stack of
+    // separate balls rather than as one irregular mass of coral.
+    height += radius * randRange(rng, 0.45, 0.72);
+    radius *= randRange(rng, 0.68, 0.86);
+  }
+
+  // A few short branches off the top, so the silhouette is not purely rounded.
+  const knobs = 2 + Math.floor(rng() * 4);
+  for (let i = 0; i < knobs; i++) {
+    const knob = makeStalk(rng, randRange(rng, 0.5, 1.2), randRange(rng, 0.12, 0.22), 0.06);
+    const around = rng() * Math.PI * 2;
+    const lean = randRange(rng, 0.15, 0.7);
+    knob.rotateX(Math.cos(around) * lean);
+    knob.rotateZ(Math.sin(around) * lean);
+    knob.translate(
+      Math.cos(around) * randRange(rng, 0, radius * 1.6),
+      height * randRange(rng, 0.72, 1),
+      Math.sin(around) * randRange(rng, 0, radius * 1.6),
+    );
+    parts.push(knob);
+  }
+
+  return mergeSimple(parts);
+}
+
+/**
+ * Table coral: a broad horizontal plate on a short stem.
+ *
+ * The most recognisable large coral silhouette there is, and the only one here
+ * that reads as wide rather than tall — worth having because a reef of nothing
+ * but vertical forms starts to look like a pipe organ.
+ */
+function makeTableCoral(rng: Rng): THREE.BufferGeometry {
+  const stemHeight = randRange(rng, 1.1, 2.0);
+  const spread = randRange(rng, 1.7, 2.9);
+
+  const stem = makeStalk(rng, stemHeight * 1.06, randRange(rng, 0.3, 0.44), 0.3);
+
+  const plate = new THREE.CylinderGeometry(spread, spread * 0.94, 0.22, 16, 3);
+  const position = plate.getAttribute("position") as THREE.BufferAttribute;
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const z = position.getZ(i);
+    const r = Math.hypot(x, z) / spread;
+    const angle = Math.atan2(z, x);
+    // The rim droops and ripples; a flat disc reads as a manufactured part.
+    position.setY(
+      i,
+      position.getY(i) - r * r * randRange(rng, 0.3, 0.6) + Math.sin(angle * 3.4) * r * 0.16,
+    );
+  }
+  plate.translate(0, stemHeight, 0);
+
+  return mergeSimple([stem, plate]);
+}
+
+/**
+ * Barrel sponge: a hollow flared column.
+ *
+ * A lathe rather than a cylinder, because the profile runs up the outside, over
+ * the rim and back down the inside — so it is genuinely open at the top and you
+ * can see into it when swimming over, which a capped tube never sells.
+ */
+function makeBarrelSponge(rng: Rng): THREE.BufferGeometry {
+  const height = randRange(rng, 2.2, 4.0);
+  const baseRadius = randRange(rng, 0.55, 0.85);
+  const flare = randRange(rng, 0.35, 0.75);
+
+  const outer = (t: number) => baseRadius + Math.sin(t * Math.PI * 0.62) * flare + t * 0.22;
+
+  const profile: THREE.Vector2[] = [];
+  const steps = 5;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    profile.push(new THREE.Vector2(outer(t), t * height));
+  }
+  for (let i = steps; i >= 0; i--) {
+    const t = i / steps;
+    // Wall thickness tapers with the flare, so the rim stays thin.
+    profile.push(new THREE.Vector2(outer(t) * 0.7, t * height * 0.97));
+  }
+  profile.push(new THREE.Vector2(0.02, height * 0.12));
+
+  const barrel = new THREE.LatheGeometry(profile, 14);
+  roughen(barrel, rng, 0.03, 2.4);
+  barrel.computeVertexNormals();
+  return barrel;
+}
+
+/** Pillar coral: thick fingers rising from a common base. */
+function makePillarCoral(rng: Rng): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+
+  const base = new THREE.SphereGeometry(randRange(rng, 1.0, 1.5), 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.5);
+  base.scale(1, randRange(rng, 0.45, 0.7), 1);
+  parts.push(base);
+
+  const columns = 3 + Math.floor(rng() * 4);
+  for (let i = 0; i < columns; i++) {
+    const height = randRange(rng, 2.2, 4.2);
+    const column = makeStalk(rng, height, randRange(rng, 0.26, 0.42), randRange(rng, 0.14, 0.24));
+
+    // A gentle lengthwise curve. Perfectly straight columns look extruded.
+    const curve = randRange(rng, -0.35, 0.35);
+    const position = column.getAttribute("position") as THREE.BufferAttribute;
+    for (let v = 0; v < position.count; v++) {
+      const t = Math.max(0, position.getY(v)) / height;
+      position.setX(v, position.getX(v) + t * t * curve);
+    }
+
+    const around = (i / columns) * Math.PI * 2 + randRange(rng, -0.5, 0.5);
+    const spread = randRange(rng, 0.15, 0.85);
+    column.translate(Math.cos(around) * spread, randRange(rng, 0.1, 0.4), Math.sin(around) * spread);
+    parts.push(column);
+  }
+
+  return mergeSimple(parts);
+}
+
+function makeStructure(rng: Rng): THREE.BufferGeometry {
+  const roll = rng();
+  if (roll < 0.38) return makeBommie(rng);
+  if (roll < 0.64) return makePillarCoral(rng);
+  if (roll < 0.85) return makeTableCoral(rng);
+  return makeBarrelSponge(rng);
+}
+
 // -- prototype library -------------------------------------------------------
 
 /**
@@ -254,6 +428,8 @@ interface PropLibrary {
   coral: THREE.BufferGeometry[];
   rock: THREE.BufferGeometry[];
   kelp: THREE.BufferGeometry[];
+  /** Large anchors. Fewer variants, because far fewer are ever placed. */
+  structure: THREE.BufferGeometry[];
 }
 
 let library: PropLibrary | null = null;
@@ -268,6 +444,7 @@ function props(): PropLibrary {
     coral: Array.from({ length: 18 }, () => makeCoral(rng)),
     rock: Array.from({ length: 10 }, () => makeBoulder(rng)),
     kelp: Array.from({ length: 12 }, () => makeKelp(rng)),
+    structure: Array.from({ length: 14 }, () => makeStructure(rng)),
   };
   return library;
 }
@@ -416,29 +593,24 @@ export function buildChunkDecor(
   const normal = { x: 0, y: 1, z: 0 };
 
   /**
-   * Find a spot that is not on a cliff. Gives up rather than forcing it.
+   * Sample the ground, rejecting anything too steep to sit on.
    *
-   * The surface normal is carried out with the spot rather than recomputed
-   * when the prop is placed. Each normal costs four terrain samples, and this
-   * runs tens of times per chunk — chunk construction is the one genuinely hot
-   * path in the project, so the duplication was worth removing.
+   * The surface normal is carried out with the spot rather than recomputed when
+   * the prop is placed. Each normal costs four terrain samples, and this runs
+   * tens of times per chunk — chunk construction is the one genuinely hot path
+   * in the project, so the duplication was worth removing.
    */
-  const findSpot = (): Spot | null => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const x = originX + rng() * WORLD.chunkSize;
-      const z = originZ + rng() * WORLD.chunkSize;
-      terrain.normalAt(x, z, 1.5, normal);
-      if (1 - normal.y > MAX_SLOPE) continue;
-      return {
-        x,
-        z,
-        y: terrain.heightAt(x, z),
-        nx: normal.x,
-        ny: normal.y,
-        nz: normal.z,
-      };
-    }
-    return null;
+  const siteAt = (x: number, z: number, maxSlope: number): Spot | null => {
+    terrain.normalAt(x, z, 1.5, normal);
+    if (1 - normal.y > maxSlope) return null;
+    return {
+      x,
+      z,
+      y: terrain.heightAt(x, z),
+      nx: normal.x,
+      ny: normal.y,
+      nz: normal.z,
+    };
   };
 
   const place = (
@@ -447,10 +619,14 @@ export function buildChunkDecor(
     size: number,
     tint: number,
     flexAt: (localY: number, maxY: number) => number,
-    alignToSlope: boolean,
+    /** How far the prop tips with the ground: 0 stands upright, 1 sits flush. */
+    align: number,
+    turn: number,
+    /** Multiplier on the base colour. Varies per prop, never per vertex. */
+    brightness: number,
   ) => {
-    if (alignToSlope) {
-      surfaceNormal.set(spot.nx, spot.ny, spot.nz);
+    if (align > 0) {
+      surfaceNormal.set(spot.nx, spot.ny, spot.nz).lerp(up, 1 - align).normalize();
       quaternion.setFromUnitVectors(up, surfaceNormal);
     } else {
       quaternion.identity();
@@ -459,7 +635,7 @@ export function buildChunkDecor(
     // Spin each placement about its own axis. With a shared prototype library
     // this is what stops repeats being recognisable — the same coral seen from
     // two different angles does not read as the same coral.
-    spin.setFromAxisAngle(up, rng() * Math.PI * 2);
+    spin.setFromAxisAngle(up, turn * Math.PI * 2);
     quaternion.multiply(spin);
 
     // Chunk-local, because the mesh itself is positioned at the chunk origin.
@@ -468,74 +644,161 @@ export function buildChunkDecor(
     matrix.compose(translation, quaternion, scale);
 
     color.setHex(tint);
-    // A little per-prop brightness variation stops a field of coral reading as
-    // one flat mass of identical colour.
-    color.multiplyScalar(randRange(rng, 0.78, 1.18));
+    color.multiplyScalar(brightness);
     appendProp(acc, geometry, matrix, color, flexAt);
   };
 
   const rigid = () => 0;
   const coralFlex = (y: number, maxY: number) => (y / maxY) * 0.22;
+  // A structure is a solid mass of coral or sponge several metres across. It
+  // does not sway, and letting it would immediately give away that everything
+  // down here is bending on the same shader.
+  const structureFlex = rigid;
   const kelpFlex = (y: number, maxY: number) => Math.pow(Math.max(y, 0) / maxY, 1.4);
 
-  // Boulders scatter everywhere — they are geology, not biology — but thin out
-  // a little in the lushest gardens where coral has taken the ground.
-  for (let i = 0; i < ROCK_ATTEMPTS; i++) {
-    const spot = findSpot();
-    if (!spot) continue;
-    if (rng() < terrain.reefDensityAt(spot.x, spot.z) * 0.45) continue;
-    place(
-      pick(rng, shapes.rock),
-      { ...spot, y: spot.y - 0.25 },
-      randRange(rng, 0.7, 2.8),
-      ROCK_COLORS[Math.floor(rng() * ROCK_COLORS.length)]!,
-      rigid,
-      true,
-    );
-  }
+  const from = <T>(list: readonly T[], at: number): T =>
+    list[Math.min(list.length - 1, Math.floor(at * list.length))]!;
 
-  let coralPlaced = 0;
-  for (let i = 0; i < CORAL_ATTEMPTS; i++) {
-    const spot = findSpot();
-    if (!spot) continue;
+  /** Turn one colony member — or a stray — into geometry on the seabed. */
+  const placeProp = (
+    prop: PropKind,
+    x: number,
+    z: number,
+    size: number,
+    variant: number,
+    tint: number,
+    turn: number,
+    shade: number,
+  ): Spot | null => {
+    const spot = siteAt(x, z, prop === PropKind.Rock ? MAX_ROCK_SLOPE : MAX_SLOPE);
+    if (!spot) return null;
 
-    const density = terrain.reefDensityAt(spot.x, spot.z);
-    if (rng() > density) continue;
+    // A little per-prop brightness variation stops a field of coral reading as
+    // one flat mass of identical colour. Structures get a much tighter range:
+    // the same swing that reads as pleasant variety across two dozen small
+    // corals turns a single five-metre mass either chalky or nearly black.
+    const brightness =
+      prop === PropKind.Structure ? 0.9 + shade * 0.22 : 0.78 + shade * 0.4;
 
-    place(
-      pick(rng, shapes.coral),
-      spot,
-      // Coral grows larger where the reef is richest, so a garden reads as
-      // established rather than just crowded.
-      randRange(rng, 0.75, 1.6) * (0.8 + density * 0.95),
-      CORAL_COLORS[Math.floor(rng() * CORAL_COLORS.length)]!,
-      coralFlex,
-      true,
-    );
-    coralPlaced++;
-
-    // The first couple of coral heads in a chunk double as somewhere for the
-    // autopilot to drift toward, so wandering passes scenery rather than sand.
-    if (coralPlaced <= 2) {
-      pointsOfInterest.push({
-        key: `coral:${cx}:${cz}:${i}`,
-        position: new THREE.Vector3(spot.x, spot.y + 6, spot.z),
-        weight: 1,
-      });
+    switch (prop) {
+      case PropKind.Rock:
+        place(
+          from(shapes.rock, variant),
+          // Settled slightly into the sand rather than resting on top of it.
+          { ...spot, y: spot.y - 0.25 },
+          size,
+          from(ROCK_COLORS, tint),
+          rigid,
+          1,
+          turn,
+          brightness,
+        );
+        break;
+      case PropKind.Kelp:
+        place(
+          from(shapes.kelp, variant),
+          spot,
+          size,
+          from(KELP_COLORS, tint),
+          kelpFlex,
+          // Kelp grows toward the light, not out of the slope it is rooted in.
+          0,
+          turn,
+          brightness,
+        );
+        break;
+      case PropKind.Structure:
+        place(
+          from(shapes.structure, variant),
+          { ...spot, y: spot.y - 0.4 },
+          size,
+          from(STRUCTURE_COLORS, tint),
+          structureFlex,
+          // Only partly. A small prop lying flush with a slope looks settled;
+          // a five-metre coral head at the same angle looks like it fell over.
+          0.4,
+          turn,
+          brightness,
+        );
+        break;
+      default:
+        place(
+          from(shapes.coral, variant),
+          spot,
+          size,
+          from(CORAL_COLORS, tint),
+          coralFlex,
+          0.85,
+          turn,
+          brightness,
+        );
+        break;
     }
+
+    return spot;
+  };
+
+  // --- Colonies: the bulk of the seabed's life ------------------------------
+  const { members, sites } = collectColonies(worldSeed, cx, cz, terrain);
+
+  for (const member of members) {
+    placeProp(
+      member.prop,
+      member.x,
+      member.z,
+      member.size,
+      member.variant,
+      member.tint,
+      member.spin,
+      member.shade,
+    );
   }
 
-  for (let i = 0; i < KELP_ATTEMPTS; i++) {
-    const spot = findSpot();
-    if (!spot) continue;
-    if (rng() > terrain.reefDensityAt(spot.x, spot.z) * 0.9) continue;
-    place(
-      pick(rng, shapes.kelp),
-      spot,
-      randRange(rng, 0.8, 1.6),
-      KELP_COLORS[Math.floor(rng() * KELP_COLORS.length)]!,
-      kelpFlex,
-      false,
+  // Somewhere for the autopilot to drift toward. A colony centre is a far
+  // better target than an arbitrary coral head was: it aims the animal at the
+  // middle of a cluster rather than at whichever prop happened to be placed
+  // first, and there is exactly one per colony rather than two per chunk.
+  for (const site of sites) {
+    const weight =
+      site.landmark ? 3 : site.kind === ColonyKind.Reef ? 1.6 : site.kind === ColonyKind.KelpBed ? 1 : 0.5;
+    pointsOfInterest.push({
+      key: site.key,
+      position: new THREE.Vector3(
+        site.x,
+        terrain.heightAt(site.x, site.z) + (site.landmark ? 11 : 7),
+        site.z,
+      ),
+      weight,
+    });
+  }
+
+  // --- Strays: a thin scatter over the open ground between colonies ---------
+  for (let i = 0; i < STRAY_ATTEMPTS; i++) {
+    const x = originX + rng() * WORLD.chunkSize;
+    const z = originZ + rng() * WORLD.chunkSize;
+    const density = terrain.reefDensityAt(x, z);
+
+    // Rock on the bare flats, the occasional lone coral or frond where the
+    // ground is fertile enough to support one.
+    const roll = rng();
+    const prop =
+      roll < 0.3 + (1 - density) * 0.3
+        ? PropKind.Rock
+        : roll < 0.78
+          ? PropKind.Coral
+          : PropKind.Kelp;
+
+    if (prop !== PropKind.Rock && rng() > density * 0.75) continue;
+
+    placeProp(
+      prop,
+      x,
+      z,
+      prop === PropKind.Rock ? randRange(rng, 0.6, 2.2) : randRange(rng, 0.7, 1.2),
+      rng(),
+      rng(),
+      rng(),
+      rng(),
     );
   }
 

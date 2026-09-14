@@ -21,6 +21,7 @@ npm run dev      # http://127.0.0.1:5173
 | `npm run preview` | Serve the production bundle |
 | `npm run typecheck` | Types only |
 | `npm run verify:wander` | Headless check of the ambient wander (see below) |
+| `npm run verify:reef` | Headless survey of how life is distributed on the seabed |
 
 ## Controls
 
@@ -82,9 +83,33 @@ stays flat no matter how long a session runs.
 plateaus set the large shape; ordinary relief rolls over that; mid detail gives
 the eye a sense of scale and a fine ripple is the sand texture up close. Then
 two layers do the real work: *ridged* noise carved downward into winding
-trenches, and a threshold layer raising occasional reef mounds. A separate
-reef-density field decides how thickly coral and kelp grow, so the world has
-dense gardens and bare sand flats rather than an even sprinkle everywhere.
+trenches, and a threshold layer raising occasional reef mounds.
+
+**Life grows in colonies, not in a sprinkle.** Scattering props at random and
+filtering them through a density field gives you more coral here and less there,
+but every prop is still roughly as far from its neighbours as any other, and the
+floor reads as litter. Real seabed is not like that — coral spreads outward from
+a founding head, kelp grows in beds, loose rock collects in rubble fields. The
+interesting structure is the clustering, not the density.
+
+So placement happens in two stages. A colony field decides where clusters sit:
+each one is an ellipse of ground with a kind, a shared palette and a member
+list, packed toward its own heart and thinning at the rim, mostly of its own
+kind but mixed at the edges. Roughly 70% of the eligible seabed ends up genuinely
+open, and arriving at a reef feels like arriving somewhere.
+
+Colonies are anchored to a cell but their members spill freely across chunk
+borders, so a cluster is built half by each side. That only works because two
+chunks generating the same colony must agree exactly: a colony is seeded from
+its own cell, never from the chunk doing the asking, and is culled by bounding
+box *before* any member is drawn from its generator rather than after.
+
+**And there are structures to swim around.** Fertile reefs grow a large anchor —
+a stacked coral head, a table coral, a cluster of pillars, or a hollow barrel
+sponge standing several metres off the floor. Everything else down here tops out
+around waist height on a swimming whale, which is why the seabed felt flat no
+matter how much was scattered on it: a scene needs something to swim *over*, not
+only past. One turns up roughly every eighty metres of seabed.
 
 **There are wrecks.** Roughly one per quarter square kilometre, a ship lies
 broken in two on the seabed, its halves settled at different angles with a gap
@@ -133,6 +158,27 @@ simulated minutes each — and asserts that it never stalls, never touches the
 seabed or surface, covers enough distinct ground to rule out circling, never
 loiters in one place, and ends up somewhere genuinely else.
 
+## The reef, and why it is also tested
+
+Clustering has a failure mode that screenshots cannot catch. One view shows you
+one reef and tells you nothing about the rest of the ocean, and colonies that are
+too small, too frequent or too evenly spaced all look perfectly fine close up and
+wrong from above. The difference between *clustered* and *sprinkled* is a
+statistic, not a picture.
+
+`npm run verify:reef` walks about 2.4 km² of seabed per seed, builds the real
+decor, and reports the distribution: colonies per chunk, how often a large
+structure appears, and — the number that actually distinguishes the two — what
+share of usable ground has no prop within twelve metres. An even scatter at the
+same overall density leaves almost nowhere far from something; clustering
+concentrates the same props and opens real space between them.
+
+It guards both ends. Too few colonies and the ocean reads as empty; too many and
+they merge back into the sprinkle they replaced. It also caps the triangles in
+the heaviest chunk, because where the fertility field peaks three or four
+colonies can land on the same ground, and that chunk is what sets the worst frame
+the streaming budget ever has to absorb.
+
 ## Performance
 
 Pixel ratio is capped at 1.5, there are no shadow maps and no post-processing,
@@ -151,6 +197,14 @@ scratch for every chunk. Props are now built once into a shared library and
 reused with per-placement scale, rotation and tint, which took decor to under
 6ms. Chunk work is additionally split into a terrain pass and a decor pass
 under a 5ms-per-frame time budget, so no single unit of work can blow a frame.
+
+Moving to colonies made the seabed cheaper as well as better. Clustered life
+needs fewer props than an even scatter to read as dense, and the survey showed
+where the geometry was actually going — a coral clump is a dozen tapered tubes,
+so the vertex count of one branch mattered far more than its silhouette at the
+distance one is ever seen from. Decor now costs about 4,000 triangles per chunk
+against roughly 12,000 before, with the heaviest chunk across five seeds at
+20,000 — and that is with the large structures added.
 
 Press **F** to watch it live. Draw calls should stay roughly constant as you
 swim rather than climbing with distance travelled, and the live chunk count
