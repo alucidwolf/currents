@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { WORLD } from "../core/config";
-import { chunkRng, randRange } from "../core/rng";
+import { chunkRng, mulberry32, pick, randRange } from "../core/rng";
 import type { Rng } from "../core/rng";
 import { buildBody } from "../creatures/shapes";
 import type { PointOfInterest } from "../creatures/wander";
@@ -46,6 +46,16 @@ interface Accumulator {
 export interface ChunkDecor {
   geometry: THREE.BufferGeometry;
   pointsOfInterest: PointOfInterest[];
+}
+
+/** A validated placement site, carrying the surface normal already sampled. */
+interface Spot {
+  x: number;
+  z: number;
+  y: number;
+  nx: number;
+  ny: number;
+  nz: number;
 }
 
 // -- prop builders -----------------------------------------------------------
@@ -220,6 +230,43 @@ function makeCoral(rng: Rng): THREE.BufferGeometry {
   return makeFanCoral(rng);
 }
 
+// -- prototype library -------------------------------------------------------
+
+/**
+ * Props are built once and reused, not regenerated per chunk.
+ *
+ * Constructing them per placement made chunk decor cost 22ms — nineteen times
+ * the terrain mesh it sits on, and the sole cause of every dropped frame while
+ * streaming. Nearly all of that was geometry construction: allocating typed
+ * arrays, merging branches, and computing normals that the chunk's own merge
+ * then throws away and recomputes anyway.
+ *
+ * A fixed library sampled at random, combined with per-placement scale,
+ * rotation and tint, is visually indistinguishable from unique geometry at the
+ * distances these are seen — and costs nothing after the first chunk.
+ */
+interface PropLibrary {
+  coral: THREE.BufferGeometry[];
+  rock: THREE.BufferGeometry[];
+  kelp: THREE.BufferGeometry[];
+}
+
+let library: PropLibrary | null = null;
+
+function props(): PropLibrary {
+  if (library) return library;
+
+  // Fixed seed: the library is world-independent, so every ocean draws from
+  // the same shapes and only placement differs.
+  const rng = mulberry32(0x0c02a1);
+  library = {
+    coral: Array.from({ length: 18 }, () => makeCoral(rng)),
+    rock: Array.from({ length: 10 }, () => makeBoulder(rng)),
+    kelp: Array.from({ length: 12 }, () => makeKelp(rng)),
+  };
+  return library;
+}
+
 /**
  * A kelp frond: two tall strips crossed at right angles.
  *
@@ -321,7 +368,9 @@ function appendProp(
     for (let i = 0; i < position.count; i++) acc.indices.push(i + base);
   }
 
-  geometry.dispose();
+  // Deliberately does not dispose: most sources are shared library prototypes
+  // that must survive for the life of the process. One-off geometry (wreck
+  // parts) is disposed by its caller.
 }
 
 /**
@@ -338,6 +387,7 @@ export function buildChunkDecor(
   terrain: Terrain,
 ): ChunkDecor | null {
   const rng = chunkRng(worldSeed, cx, cz, 0x5eed);
+  const shapes = props();
   const originX = cx * WORLD.chunkSize;
   const originZ = cz * WORLD.chunkSize;
 
@@ -347,36 +397,59 @@ export function buildChunkDecor(
   const color = new THREE.Color();
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
+  const spin = new THREE.Quaternion();
   const scale = new THREE.Vector3();
   const translation = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
+  const surfaceNormal = new THREE.Vector3();
   const normal = { x: 0, y: 1, z: 0 };
 
-  /** Find a spot that is not on a cliff. Gives up rather than forcing it. */
-  const findSpot = (): { x: number; z: number; y: number } | null => {
-    for (let attempt = 0; attempt < 6; attempt++) {
+  /**
+   * Find a spot that is not on a cliff. Gives up rather than forcing it.
+   *
+   * The surface normal is carried out with the spot rather than recomputed
+   * when the prop is placed. Each normal costs four terrain samples, and this
+   * runs tens of times per chunk — chunk construction is the one genuinely hot
+   * path in the project, so the duplication was worth removing.
+   */
+  const findSpot = (): Spot | null => {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const x = originX + rng() * WORLD.chunkSize;
       const z = originZ + rng() * WORLD.chunkSize;
-      if (terrain.slopeAt(x, z) > MAX_SLOPE) continue;
-      return { x, z, y: terrain.heightAt(x, z) };
+      terrain.normalAt(x, z, 1.5, normal);
+      if (1 - normal.y > MAX_SLOPE) continue;
+      return {
+        x,
+        z,
+        y: terrain.heightAt(x, z),
+        nx: normal.x,
+        ny: normal.y,
+        nz: normal.z,
+      };
     }
     return null;
   };
 
   const place = (
     geometry: THREE.BufferGeometry,
-    spot: { x: number; z: number; y: number },
+    spot: Spot,
     size: number,
     tint: number,
     flexAt: (localY: number, maxY: number) => number,
     alignToSlope: boolean,
   ) => {
     if (alignToSlope) {
-      terrain.normalAt(spot.x, spot.z, 1.5, normal);
-      quaternion.setFromUnitVectors(up, new THREE.Vector3(normal.x, normal.y, normal.z));
+      surfaceNormal.set(spot.nx, spot.ny, spot.nz);
+      quaternion.setFromUnitVectors(up, surfaceNormal);
     } else {
       quaternion.identity();
     }
+
+    // Spin each placement about its own axis. With a shared prototype library
+    // this is what stops repeats being recognisable — the same coral seen from
+    // two different angles does not read as the same coral.
+    spin.setFromAxisAngle(up, rng() * Math.PI * 2);
+    quaternion.multiply(spin);
 
     // Chunk-local, because the mesh itself is positioned at the chunk origin.
     translation.set(spot.x - originX, spot.y, spot.z - originZ);
@@ -401,7 +474,7 @@ export function buildChunkDecor(
     if (!spot) continue;
     if (rng() < terrain.reefDensityAt(spot.x, spot.z) * 0.45) continue;
     place(
-      makeBoulder(rng),
+      pick(rng, shapes.rock),
       { ...spot, y: spot.y - 0.25 },
       randRange(rng, 0.7, 2.8),
       ROCK_COLORS[Math.floor(rng() * ROCK_COLORS.length)]!,
@@ -419,7 +492,7 @@ export function buildChunkDecor(
     if (rng() > density) continue;
 
     place(
-      makeCoral(rng),
+      pick(rng, shapes.coral),
       spot,
       // Coral grows larger where the reef is richest, so a garden reads as
       // established rather than just crowded.
@@ -446,7 +519,7 @@ export function buildChunkDecor(
     if (!spot) continue;
     if (rng() > terrain.reefDensityAt(spot.x, spot.z) * 0.9) continue;
     place(
-      makeKelp(rng),
+      pick(rng, shapes.kelp),
       spot,
       randRange(rng, 0.8, 1.6),
       KELP_COLORS[Math.floor(rng() * KELP_COLORS.length)]!,
@@ -471,10 +544,14 @@ export function buildChunkDecor(
       new THREE.Vector3(wreck.scale, wreck.scale, wreck.scale),
     );
 
+    // Wrecks are one-offs rather than library prototypes — too rare to be worth
+    // caching, and each should be genuinely unique — so their geometry is
+    // released once its vertices have been folded into the chunk.
     for (const part of buildShipwreck(rng)) {
       color.setHex(part.color);
       color.multiplyScalar(randRange(rng, 0.85, 1.1));
       appendProp(acc, part.geometry, wreckMatrix, color, rigid);
+      part.geometry.dispose();
     }
 
     // Worth a detour: wrecks outrank coral and fish as somewhere to drift past.

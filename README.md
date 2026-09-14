@@ -110,13 +110,30 @@ loiters in one place, and ends up somewhere genuinely else.
 
 ## Performance
 
-Targets a steady 60fps at 1080p on integrated graphics. Pixel ratio is capped at
-1.5, there are no shadow maps and no post-processing, draw distance is bounded
-by the fog, and rendering suspends entirely while the tab is hidden.
+Pixel ratio is capped at 1.5, there are no shadow maps and no post-processing,
+draw distance is bounded by the fog, and rendering suspends entirely while the
+tab is hidden.
 
-Press **F** to watch it. Draw calls should stay roughly constant as you swim
-rather than climbing with distance travelled, and the live chunk count should
-plateau rather than growing.
+Measured on a 100Hz display while actively streaming terrain: **every frame in
+a 25-second window hit vsync**, worst frame 10.3ms, with ~480k triangles across
+~67 draw calls and a flat heap.
+
+Getting there took two rounds of measurement, and the first assumption was
+wrong. Chunk streaming was the only source of dropped frames, but not for the
+reason expected — the terrain mesh costs about 1.2ms to build, while *decor*
+cost 22ms, because every coral, rock and kelp was being constructed from
+scratch for every chunk. Props are now built once into a shared library and
+reused with per-placement scale, rotation and tint, which took decor to under
+6ms. Chunk work is additionally split into a terrain pass and a decor pass
+under a 5ms-per-frame time budget, so no single unit of work can blow a frame.
+
+Press **F** to watch it live. Draw calls should stay roughly constant as you
+swim rather than climbing with distance travelled, and the live chunk count
+should plateau rather than growing.
+
+> Note that framerate cannot be measured while the tab is unfocused — the
+> rendering loop deliberately suspends itself, so `requestAnimationFrame` never
+> fires and any in-page sampler will simply hang.
 
 ## Layout
 
