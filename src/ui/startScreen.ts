@@ -49,3 +49,13 @@ export function showStartScreen(options: {
 export function isAmbientMode(hash: string = location.hash): boolean {
   return /(?:^|[#&])ambient(?:&|=|$)/.test(hash);
 }
+
+/**
+ * An explicitly requested animal, from `#species=manta`.
+ *
+ * Lets a particular animal be linked directly, and skips the menu the same way
+ * `#ambient` does.
+ */
+export function requestedSpecies(hash: string = location.hash): string | null {
+  return /(?:^|[#&])species=([a-z]+)/i.exec(hash)?.[1]?.toLowerCase() ?? null;
+}

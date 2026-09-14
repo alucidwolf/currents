@@ -9,7 +9,7 @@ import { createInput } from "./control/input";
 import { Swimmer } from "./creatures/swimmer";
 import type { SteerCommand } from "./creatures/swimmer";
 import { Wander } from "./creatures/wander";
-import { SPECIES } from "./creatures/species";
+import { SPECIES, speciesById } from "./creatures/species";
 import type { CreatureRig, SpeciesDef } from "./creatures/species";
 import { makeCausticTerrainMaterial } from "./world/caustics";
 import { ChunkManager } from "./world/chunks";
@@ -21,7 +21,7 @@ import { Motes } from "./world/motes";
 import { Terrain } from "./world/terrain";
 import { Water } from "./world/water";
 import { Hud } from "./ui/hud";
-import { isAmbientMode, showStartScreen } from "./ui/startScreen";
+import { isAmbientMode, requestedSpecies, showStartScreen } from "./ui/startScreen";
 
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
 
@@ -201,7 +201,13 @@ window.addEventListener("resize", () => {
 
 const startRoot = document.getElementById("start")!;
 
-if (isAmbientMode()) {
+const named = requestedSpecies();
+
+if (named) {
+  // A directly linked animal, e.g. #species=manta. Skips the menu.
+  startRoot.remove();
+  adoptSpecies(speciesById(named));
+} else if (isAmbientMode()) {
   // Unattended display: no menu, no choice to make, just start swimming.
   startRoot.remove();
   adoptSpecies(SPECIES[Math.floor(Math.random() * SPECIES.length)]!);

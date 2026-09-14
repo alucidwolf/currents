@@ -24,6 +24,42 @@ export interface BodyProfile {
    * Returning zero at both ends closes the body into a point.
    */
   radius(t: number): { x: number; y: number };
+  /**
+   * Vertical offset of the section centre at `t`.
+   *
+   * An animal is not symmetric about its own axis: a whale's jaw hangs below
+   * its centreline while its back arches above it. Offsetting the sections is
+   * what turns a tube of revolution into something with a belly and a spine.
+   */
+  offsetY?(t: number): number;
+  /**
+   * Superellipse exponent at `t`. 2 is a plain ellipse; higher is squarer and
+   * more slab-sided; lower tends toward a teardrop.
+   *
+   * Real bodies are not elliptical in section — a cetacean is close to 2.4
+   * amidships and rounds off toward the extremities.
+   */
+  sharpness?(t: number): number;
+}
+
+/**
+ * A point on a superellipse: |x/a|^n + |y/b|^n = 1.
+ *
+ * Written with signed powers so it stays continuous through all four
+ * quadrants, which the naive `pow` form does not.
+ */
+function superellipse(
+  theta: number,
+  a: number,
+  b: number,
+  n: number,
+  out: { x: number; y: number },
+): void {
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  const e = 2 / n;
+  out.x = a * Math.sign(c) * Math.pow(Math.abs(c), e);
+  out.y = b * Math.sign(s) * Math.pow(Math.abs(s), e);
 }
 
 /**
@@ -37,15 +73,19 @@ export function buildBody(profile: BodyProfile): THREE.BufferGeometry {
 
   const positions: number[] = [];
   const indices: number[] = [];
+  const point = { x: 0, y: 0 };
 
   for (let s = 0; s <= segments; s++) {
     const t = s / segments;
     const z = -length / 2 + t * length;
     const r = profile.radius(t);
+    const offset = profile.offsetY ? profile.offsetY(t) : 0;
+    const n = profile.sharpness ? profile.sharpness(t) : 2;
 
     for (let i = 0; i < radial; i++) {
       const theta = (i / radial) * Math.PI * 2;
-      positions.push(Math.cos(theta) * r.x, Math.sin(theta) * r.y, z);
+      superellipse(theta, r.x, r.y, n, point);
+      positions.push(point.x, point.y + offset, z);
     }
   }
 
@@ -70,7 +110,96 @@ export function buildBody(profile: BodyProfile): THREE.BufferGeometry {
 }
 
 /**
- * A flat tapered blade: fins, flippers, flukes.
+ * NACA four-digit symmetric half-thickness, normalised to peak at 1.
+ *
+ * Rounded at the leading edge, thickest around 30% chord, tapering to a fine
+ * trailing edge. This one curve is the difference between a fin that looks
+ * like a blade and one that looks like a piece of card.
+ */
+function foilThickness(c: number): number {
+  const x = Math.min(1, Math.max(0, c));
+  const yt =
+    0.2969 * Math.sqrt(x) -
+    0.126 * x -
+    0.3516 * x * x +
+    0.2843 * x * x * x -
+    0.1015 * x * x * x * x;
+  return Math.max(0, yt) / 0.1002;
+}
+
+/**
+ * Build one closed airfoil ring, walking the upper surface forward to back and
+ * the lower surface back to front.
+ *
+ * A floor is applied to the half-thickness so the leading and trailing edges
+ * do not collapse to exactly coincident points — degenerate triangles there
+ * produce NaN vertex normals, which blacken the whole fin.
+ */
+function foilRing(
+  out: number[],
+  chord: number,
+  thickness: number,
+  chordSegments: number,
+  spanValue: number,
+  centreOffset: number,
+  zOffset: number,
+  spanAxis: "x" | "y",
+): void {
+  const count = chordSegments * 2;
+  const floor = Math.max(thickness * 0.02, 1e-3);
+
+  for (let i = 0; i < count; i++) {
+    const u = i / count;
+    const upper = u <= 0.5;
+    const c = upper ? u * 2 : (1 - u) * 2;
+
+    const half = Math.max(foilThickness(c) * thickness * 0.5, floor);
+    const th = (upper ? half : -half) + centreOffset;
+    const z = zOffset + chord * (0.5 - c);
+
+    if (spanAxis === "x") out.push(spanValue, th, z);
+    else out.push(th, spanValue, z);
+  }
+}
+
+/** Join two consecutive rings of `count` points into a band of quads. */
+function stitchRings(indices: number[], ringA: number, ringB: number, count: number): void {
+  for (let i = 0; i < count; i++) {
+    const next = (i + 1) % count;
+    indices.push(ringA + i, ringB + i, ringA + next);
+    indices.push(ringA + next, ringB + i, ringB + next);
+  }
+}
+
+/** Close a ring with a fan to a central point. */
+function capRing(
+  positions: number[],
+  indices: number[],
+  ringStart: number,
+  count: number,
+  flip: boolean,
+): void {
+  let cx = 0;
+  let cy = 0;
+  let cz = 0;
+  for (let i = 0; i < count; i++) {
+    cx += positions[(ringStart + i) * 3]!;
+    cy += positions[(ringStart + i) * 3 + 1]!;
+    cz += positions[(ringStart + i) * 3 + 2]!;
+  }
+
+  const centre = positions.length / 3;
+  positions.push(cx / count, cy / count, cz / count);
+
+  for (let i = 0; i < count; i++) {
+    const next = (i + 1) % count;
+    if (flip) indices.push(centre, ringStart + next, ringStart + i);
+    else indices.push(centre, ringStart + i, ringStart + next);
+  }
+}
+
+/**
+ * A fin, flipper or dorsal with a real aerofoil section and a curved planform.
  *
  * Emitted already pointing the right way rather than built flat and rotated
  * into place. Composing Euler angles for eight separate appendages is a
@@ -78,53 +207,137 @@ export function buildBody(profile: BodyProfile): THREE.BufferGeometry {
  * parameter and removes the whole class of mistake.
  *
  * The chord always runs along Z (the creature's own front-to-back), `spanAxis`
- * says which way the blade extends, and thickness takes the remaining axis.
- * `sweep` rakes the tip backwards, which is what stops a fin reading as a
- * rectangle stuck on the side of a tube.
+ * says which way the fin extends, and thickness takes the remaining axis.
+ * `sweep` rakes the tip backwards and `rise` bends it out of plane, which
+ * together are what give a pectoral fin its characteristic curve.
  */
-export function buildFin(options: {
-  /** Chord where the fin meets the body. */
-  chordRoot: number;
-  /** Chord at the tip. Smaller tapers the blade. */
-  chordTip: number;
+export function buildFoil(options: {
   span: number;
-  thickness: number;
-  sweep: number;
+  /** Chord length at span fraction s, where s runs 0 (root) to 1 (tip). */
+  chord: (s: number) => number;
+  /** How far back the section sits at s. */
+  sweep: (s: number) => number;
+  /** Maximum section thickness at s. */
+  thickness: (s: number) => number;
+  /** Out-of-plane bend at s — dihedral, or the droop of a long pectoral. */
+  rise?: (s: number) => number;
   spanAxis: "x" | "y";
-  /** +1 or -1: which side the blade extends toward. */
+  /** +1 or -1: which side the fin extends toward. */
   sign?: number;
+  stations?: number;
+  chordSegments?: number;
 }): THREE.BufferGeometry {
-  const { chordRoot, chordTip, span, thickness, sweep, spanAxis } = options;
-  const sign = options.sign ?? 1;
-  const half = thickness / 2;
-  const tipSpan = span * sign;
-
-  const rootFront = chordRoot / 2;
-  const rootBack = -chordRoot / 2;
-  const tipFront = chordTip / 2 - sweep;
-  const tipBack = -chordTip / 2 - sweep;
-
-  // (spanValue, thicknessOffset, z) laid out on the requested axes.
-  const vertex = (spanValue: number, thick: number, z: number): [number, number, number] =>
-    spanAxis === "x" ? [spanValue, thick, z] : [thick, spanValue, z];
+  const {
+    span,
+    chord,
+    sweep,
+    thickness,
+    rise,
+    spanAxis,
+    sign = 1,
+    stations = 9,
+    chordSegments = 9,
+  } = options;
 
   const positions: number[] = [];
-  for (const thick of [half, -half]) {
-    positions.push(
-      ...vertex(0, thick, rootBack),
-      ...vertex(0, thick, rootFront),
-      ...vertex(tipSpan, thick, tipFront),
-      ...vertex(tipSpan, thick, tipBack),
+  const indices: number[] = [];
+  const ringCount = chordSegments * 2;
+
+  for (let i = 0; i <= stations; i++) {
+    const s = i / stations;
+    foilRing(
+      positions,
+      chord(s),
+      thickness(s),
+      chordSegments,
+      span * sign * s,
+      rise ? rise(s) : 0,
+      sweep(s),
+      spanAxis,
     );
   }
 
-  const indices = [
-    0, 1, 2, 0, 2, 3, // near face
-    5, 4, 7, 5, 7, 6, // far face
-    1, 5, 6, 1, 6, 2, // leading edge
-    4, 0, 3, 4, 3, 7, // trailing edge
-    3, 2, 6, 3, 6, 7, // tip
-  ];
+  for (let i = 0; i < stations; i++) {
+    stitchRings(indices, i * ringCount, (i + 1) * ringCount, ringCount);
+  }
+
+  capRing(positions, indices, 0, ringCount, sign > 0);
+  capRing(positions, indices, stations * ringCount, ringCount, sign < 0);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * A cetacean tail fluke: one piece spanning both sides, swept back to the tips,
+ * with a notch cut into the centre of the trailing edge.
+ *
+ * The notch is the detail that reads as "whale" at a glance. Two separate
+ * straight blades — which is what this replaces — read as "aircraft".
+ */
+export function buildFluke(options: {
+  halfSpan: number;
+  chordCentre: number;
+  /** How far the tips trail behind the centre. */
+  sweep: number;
+  thickness: number;
+  /** Depth of the central notch, as a fraction of the centre chord. */
+  notchDepth?: number;
+  /** Width of the notch, as a fraction of the half-span. */
+  notchWidth?: number;
+  spanStations?: number;
+  chordSegments?: number;
+}): THREE.BufferGeometry {
+  const {
+    halfSpan,
+    chordCentre,
+    sweep,
+    thickness,
+    notchDepth = 0.42,
+    notchWidth = 0.17,
+    spanStations = 9,
+    chordSegments = 9,
+  } = options;
+
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const ringCount = chordSegments * 2;
+  const rings = spanStations * 2;
+
+  for (let i = 0; i <= rings; i++) {
+    // s sweeps the full span, tip to tip.
+    const s = (i / rings) * 2 - 1;
+    const a = Math.abs(s);
+
+    const taper = 1 - 0.74 * Math.pow(a, 1.5);
+    const notch = 1 - notchDepth * Math.exp(-((s / notchWidth) ** 2));
+    const chord = Math.max(chordCentre * taper * notch, chordCentre * 0.04);
+
+    // Sweeping the *centre* back rather than the leading edge keeps the
+    // leading edge smoothly curved through the notch instead of kinking.
+    const zOffset = -sweep * Math.pow(a, 1.3) - (chordCentre - chord) * 0.5;
+
+    foilRing(
+      positions,
+      chord,
+      thickness * (1 - 0.55 * a),
+      chordSegments,
+      halfSpan * s,
+      0,
+      zOffset,
+      "x",
+    );
+  }
+
+  for (let i = 0; i < rings; i++) {
+    stitchRings(indices, i * ringCount, (i + 1) * ringCount, ringCount);
+  }
+
+  capRing(positions, indices, 0, ringCount, false);
+  capRing(positions, indices, rings * ringCount, ringCount, true);
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -285,6 +498,98 @@ export function applyCountershading(
 
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   return geometry;
+}
+
+/**
+ * Multiply the existing vertex colours by a per-position factor.
+ *
+ * Runs after countershading, so markings ride on top of the base shading
+ * rather than replacing it. This is how the turtle gets its scute seams, the
+ * whale its ventral pleats and the ray its gill slits — all surface detail
+ * that would otherwise need either geometry or a texture, and needs neither.
+ */
+export function overlayPattern(
+  geometry: THREE.BufferGeometry,
+  shade: (x: number, y: number, z: number) => number,
+): THREE.BufferGeometry {
+  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const color = geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
+  if (!color) return geometry;
+
+  for (let i = 0; i < position.count; i++) {
+    const k = shade(position.getX(i), position.getY(i), position.getZ(i));
+    if (k === 1) continue;
+    color.setXYZ(i, color.getX(i) * k, color.getY(i) * k, color.getZ(i) * k);
+  }
+
+  color.needsUpdate = true;
+  return geometry;
+}
+
+/**
+ * Append solid-coloured detail geometry to an already-coloured body.
+ *
+ * Eyes must not be countershaded — a pale eye on a pale belly is invisible and
+ * a dark one on a dark back is too — so they are merged in after shading with
+ * their own fixed colour. The base geometry's own colours are carried across
+ * untouched.
+ */
+export function attachDetails(
+  base: THREE.BufferGeometry,
+  details: Array<{ geometry: THREE.BufferGeometry; color: number }>,
+): THREE.BufferGeometry {
+  if (details.length === 0) return base;
+
+  const basePos = base.getAttribute("position") as THREE.BufferAttribute;
+  const baseColor = base.getAttribute("color") as THREE.BufferAttribute | undefined;
+  const baseIndex = base.getIndex();
+
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+
+  for (let i = 0; i < basePos.count; i++) {
+    positions.push(basePos.getX(i), basePos.getY(i), basePos.getZ(i));
+    if (baseColor) colors.push(baseColor.getX(i), baseColor.getY(i), baseColor.getZ(i));
+    else colors.push(1, 1, 1);
+  }
+
+  if (baseIndex) {
+    for (let i = 0; i < baseIndex.count; i++) indices.push(baseIndex.getX(i));
+  } else {
+    for (let i = 0; i < basePos.count; i++) indices.push(i);
+  }
+
+  const tint = new THREE.Color();
+
+  for (const detail of details) {
+    const offset = positions.length / 3;
+    const pos = detail.geometry.getAttribute("position") as THREE.BufferAttribute;
+    tint.setHex(detail.color);
+
+    for (let i = 0; i < pos.count; i++) {
+      positions.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+      colors.push(tint.r, tint.g, tint.b);
+    }
+
+    const index = detail.geometry.getIndex();
+    if (index) {
+      for (let i = 0; i < index.count; i++) indices.push(index.getX(i) + offset);
+    } else {
+      for (let i = 0; i < pos.count; i++) indices.push(i + offset);
+    }
+
+    detail.geometry.dispose();
+  }
+
+  base.dispose();
+
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  merged.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  merged.setIndex(indices);
+  merged.computeVertexNormals();
+  return merged;
 }
 
 /** Apply a transform to a geometry's vertices and bake it in. */

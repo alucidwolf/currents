@@ -1,10 +1,13 @@
 import * as THREE from "three";
 import {
   applyCountershading,
+  attachDetails,
   buildBody,
-  buildFin,
+  buildFluke,
+  buildFoil,
   buildWingDisc,
   mergeGeometries,
+  overlayPattern,
   transformed,
 } from "./shapes";
 import { createSwimMaterial } from "./swimShader";
@@ -16,6 +19,13 @@ import type { SwimMaterial } from "./swimShader";
  * Each is a merged geometry plus one deforming material, so a whole creature is
  * a single draw call. Only the turtle carries separate child meshes, because
  * rowing flippers cannot be expressed as a travelling wave along a body.
+ *
+ * These aim for recognisable anatomy rather than generic sea-creature
+ * outlines: a humpback's absurd pectorals and knobbled rostrum, a dolphin's
+ * melon and beak, a ray's cephalic fins, a turtle's scutes. Those specifics are
+ * what the eye actually uses to identify an animal — far more than polygon
+ * count — but they only hold up close if the surfaces beneath them are smooth,
+ * which is what the raised segment counts are for.
  */
 
 export interface CreatureRig {
@@ -41,140 +51,26 @@ export interface SpeciesDef {
   build(): CreatureRig;
 }
 
-// -- shared construction -----------------------------------------------------
+const smooth = THREE.MathUtils.smoothstep;
 
-interface CetaceanOptions {
-  length: number;
-  girth: number;
-  height: number;
-  color: number;
-  belly: number;
-  flukeSpan: number;
-  pectoralSpan: number;
-  dorsalHeight: number;
-  beatSpeed: number;
-  beatAmplitude: number;
+const EYE = 0x131110;
+
+/** A small dark eye. Cheap, and the single biggest gain in reading as alive. */
+function eyeball(radius: number): THREE.BufferGeometry {
+  return new THREE.SphereGeometry(radius, 10, 8);
 }
 
-/**
- * Whales and dolphins share a plan: a tapered body, a horizontal tail fluke,
- * swept pectorals and a dorsal ridge. Proportions do all the differentiating.
- *
- * Fins are baked into the body geometry rather than parented as children, so
- * the vertex wave flexes them along with everything else — the fluke ends up
- * with the largest displacement simply because it sits furthest back.
- */
-function buildCetacean(options: CetaceanOptions): CreatureRig {
-  const {
-    length,
-    girth,
-    height,
-    color,
-    belly,
-    flukeSpan,
-    pectoralSpan,
-    dorsalHeight,
-    beatSpeed,
-    beatAmplitude,
-  } = options;
-
-  const half = length / 2;
-
-  const body = buildBody({
-    length,
-    // Generous for what is a single draw call. At 9 radial segments the
-    // silhouette visibly polygonised against open water; 18 reads as round.
-    segments: 34,
-    radial: 18,
-    radius(t) {
-      // Peaks around 60% of the way toward the nose, closing to a point at
-      // both ends. The exponent is what places the shoulder.
-      const w = Math.sin(Math.PI * Math.pow(t, 1.35));
-      return {
-        x: 0.04 + Math.pow(w, 0.9) * girth,
-        y: 0.03 + Math.pow(w, 0.9) * height,
-      };
-    },
-  });
-
-  const parts: THREE.BufferGeometry[] = [body];
-
-  // Fins are de-indexed before merging. The body wants smooth shading, but a
-  // fin is a flat blade with hard edges — sharing vertices between its faces
-  // would average those edges into a rounded blob. Splitting them gives each
-  // face its own normal, so one material yields a smooth body and crisp fins.
-  const hardEdged = (g: THREE.BufferGeometry) => g.toNonIndexed();
-
-  // Tail fluke: two blades reaching out sideways, flat to the water.
-  for (const side of [1, -1]) {
-    const fluke = hardEdged(
-      buildFin({
-        chordRoot: length * 0.17,
-        chordTip: length * 0.07,
-        span: flukeSpan,
-        thickness: 0.09,
-        sweep: length * 0.055,
-        spanAxis: "x",
-        sign: side,
-      }),
-    );
-    parts.push(transformed(fluke, (m) => m.makeTranslation(0, 0, -half * 0.92)));
-  }
-
-  // Pectorals: set low on the flank and drooping slightly, as they hang at rest.
-  for (const side of [1, -1]) {
-    const pectoral = hardEdged(
-      buildFin({
-        chordRoot: length * 0.13,
-        chordTip: length * 0.05,
-        span: pectoralSpan,
-        thickness: 0.07,
-        sweep: length * 0.05,
-        spanAxis: "x",
-        sign: side,
-      }),
-    );
-    transformed(pectoral, (m) => m.makeRotationZ(side * -0.22));
-    parts.push(
-      transformed(pectoral, (m) =>
-        m.makeTranslation(side * girth * 0.72, -height * 0.32, length * 0.14),
-      ),
-    );
-  }
-
-  if (dorsalHeight > 0) {
-    const dorsal = hardEdged(
-      buildFin({
-        chordRoot: length * 0.12,
-        chordTip: length * 0.04,
-        span: dorsalHeight,
-        thickness: 0.07,
-        sweep: length * 0.05,
-        spanAxis: "y",
-        sign: 1,
-      }),
-    );
-    parts.push(
-      transformed(dorsal, (m) => m.makeTranslation(0, height * 0.82, -length * 0.1)),
-    );
-  }
-
-  const geometry = applyCountershading(mergeGeometries(parts), color, belly, 0.52);
-
-  const swim = createSwimMaterial({
-    // White base so the baked countershading carries the colour unmodified.
-    color: 0xffffff,
-    vertexColors: true,
-    amplitude: beatAmplitude,
-    wavelength: 2.6 / length,
-    speed: beatSpeed,
-    mode: "vertical",
-    nose: half,
-    length,
-    onset: 0.22,
-  });
-
-  return rigFromSingleMesh(geometry, swim);
+/** Eyes are placed as a mirrored pair on every animal. */
+function eyePair(
+  radius: number,
+  x: number,
+  y: number,
+  z: number,
+): Array<{ geometry: THREE.BufferGeometry; color: number }> {
+  return [1, -1].map((side) => ({
+    geometry: transformed(eyeball(radius), (m) => m.makeTranslation(side * x, y, z)),
+    color: EYE,
+  }));
 }
 
 function rigFromSingleMesh(
@@ -199,7 +95,12 @@ function rigFromSingleMesh(
   };
 }
 
-// -- species -----------------------------------------------------------------
+/** Body bulk curve shared by the cetaceans: zero at both ends, peak forward. */
+function bulkAt(t: number, skew = 1.3): number {
+  return Math.pow(Math.max(0, Math.sin(Math.PI * Math.pow(t, skew))), 0.85);
+}
+
+// -- whale -------------------------------------------------------------------
 
 const whale: SpeciesDef = {
   id: "whale",
@@ -209,25 +110,150 @@ const whale: SpeciesDef = {
   turnScale: 0.62,
   viewDistance: 30,
   build() {
-    return buildCetacean({
-      length: 15,
-      girth: 1.62,
-      height: 1.86,
-      // Backs are pushed darker than they "should" be: a sun directly overhead
-      // lifts the upper surfaces hard, and without the extra margin the back
-      // and belly converge to the same mid-grey and the shape stops reading.
-      color: 0x1f2e40,
-      belly: 0x9fb1b8,
-      flukeSpan: 2.9,
-      pectoralSpan: 3.4,
-      dorsalHeight: 0.5,
-      // Roughly one full tail stroke every ten seconds. A humpback should look
-      // like it is barely working.
-      beatSpeed: 0.6,
-      beatAmplitude: 0.66,
+    const length = 15;
+    const girth = 1.66;
+    const height = 1.92;
+    const half = length / 2;
+
+    const arch = (t: number) =>
+      height * (0.1 * Math.sin(Math.PI * t) - 0.2 * smooth(t, 0.68, 1));
+
+    const radiusAt = (t: number) => {
+      const bulk = bulkAt(t);
+      // The tail does not taper to a point — it ends in a peduncle, narrow
+      // side to side but still deep top to bottom. That asymmetry is what
+      // makes the tail stock read as muscle rather than as a spike.
+      const stock = 1 - smooth(t, 0, 0.3);
+      return {
+        x: girth * (bulk + 0.055 * stock),
+        y: height * (bulk + 0.17 * stock),
+      };
+    };
+
+    const body = buildBody({
+      length,
+      segments: 46,
+      radial: 22,
+      radius: radiusAt,
+      // Arched back through the middle, jaw hanging below the axis at the
+      // front. A body symmetric about its own centreline reads as a tube.
+      offsetY: arch,
+      // Slab-sided amidships, rounding off toward both ends.
+      sharpness: (t) => 2 + 0.55 * Math.sin(Math.PI * t),
     });
+
+    const parts: THREE.BufferGeometry[] = [body];
+
+    parts.push(
+      transformed(
+        buildFluke({
+          halfSpan: 3.5,
+          chordCentre: 2.35,
+          sweep: 1.55,
+          thickness: 0.3,
+          notchDepth: 0.44,
+          notchWidth: 0.15,
+        }),
+        (m) => m.makeTranslation(0, 0, -half * 0.97),
+      ),
+    );
+
+    // Pectorals. A humpback's are roughly a third of its body length, which
+    // looks like a modelling error until you see a photograph — they are the
+    // animal's most recognisable feature.
+    for (const side of [1, -1]) {
+      parts.push(
+        transformed(
+          buildFoil({
+            span: 4.9,
+            spanAxis: "x",
+            sign: side,
+            stations: 12,
+            chord: (s) => 1.0 - 0.58 * Math.pow(s, 1.3),
+            sweep: (s) => -0.85 * Math.pow(s, 1.55),
+            thickness: (s) => 0.26 * (1 - 0.7 * s),
+            // Droops from the shoulder, then sweeps back up at the tip.
+            rise: (s) => -0.55 * s + 1.15 * Math.pow(s, 2.6),
+          }),
+          (m) => m.makeTranslation(side * girth * 0.56, -height * 0.3, length * 0.14),
+        ),
+      );
+    }
+
+    // Small dorsal, sitting on the characteristic hump.
+    parts.push(
+      transformed(
+        buildFoil({
+          span: 0.62,
+          spanAxis: "y",
+          stations: 6,
+          chord: (s) => 1.5 - 0.9 * s,
+          sweep: (s) => -0.42 * s,
+          thickness: (s) => 0.22 * (1 - 0.6 * s),
+        }),
+        (m) => m.makeTranslation(0, height * 0.88, -length * 0.06),
+      ),
+    );
+
+    // Tubercles: the knobs along the rostrum and jaw. Each is under a tenth of
+    // a metre and individually invisible; collectively unmistakable.
+    for (let i = 0; i < 18; i++) {
+      const t = 0.78 + (i / 17) * 0.2;
+      const lane = i % 3;
+      const bulk = bulkAt(t);
+      const z = -half + t * length;
+      const radius = lane === 0 ? 0.1 : 0.075;
+      const spread = lane === 0 ? 0 : (lane === 1 ? 1 : -1) * girth * bulk * 0.74;
+      const lift = arch(t) + height * bulk * (lane === 0 ? 0.92 : 0.34);
+
+      parts.push(
+        transformed(new THREE.SphereGeometry(radius, 7, 6), (m) =>
+          m.makeTranslation(spread, lift, z),
+        ),
+      );
+    }
+
+    let geometry = applyCountershading(mergeGeometries(parts), 0x1f2e40, 0x9fb1b8, 0.5);
+
+    // Ventral pleats: the long grooves running back from the jaw along the
+    // throat. Shading rather than geometry — at any distance you actually see
+    // this animal, the difference is not perceptible.
+    geometry = overlayPattern(geometry, (x, y, z) => {
+      const throat = smooth(z, -length * 0.04, length * 0.3) * smooth(-y, 0.15, 1.2);
+      if (throat <= 0.01) return 1;
+      const phase = x * 3.4;
+      const groove = phase - Math.floor(phase);
+      const edge = Math.min(groove, 1 - groove);
+      return 1 - throat * (1 - smooth(edge, 0.05, 0.24)) * 0.42;
+    });
+
+    // Set into the flank rather than stuck on it: positioning against the
+    // body's own radius at that station keeps only the outer cap proud of the
+    // surface, wherever the profile happens to put it.
+    const eyeT = 0.73;
+    const eyeR = radiusAt(eyeT);
+    geometry = attachDetails(
+      geometry,
+      eyePair(0.14, eyeR.x * 0.9, arch(eyeT) - eyeR.y * 0.45, -half + eyeT * length),
+    );
+
+    const swim = createSwimMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      amplitude: 0.66,
+      wavelength: 2.6 / length,
+      speed: 0.6,
+      mode: "vertical",
+      nose: half,
+      length,
+      onset: 0.22,
+    });
+
+    return rigFromSingleMesh(geometry, swim);
   },
 };
+
+// -- dolphin -----------------------------------------------------------------
 
 const dolphin: SpeciesDef = {
   id: "dolphin",
@@ -237,20 +263,128 @@ const dolphin: SpeciesDef = {
   turnScale: 1.35,
   viewDistance: 15,
   build() {
-    return buildCetacean({
-      length: 6.4,
-      girth: 0.62,
-      height: 0.72,
-      color: 0x3b4f63,
-      belly: 0xc4d2da,
-      flukeSpan: 1.25,
-      pectoralSpan: 1.05,
-      dorsalHeight: 0.78,
-      beatSpeed: 1.45,
-      beatAmplitude: 0.32,
+    const length = 6.6;
+    const girth = 0.6;
+    const height = 0.7;
+    const half = length / 2;
+
+    // The melon and beak are the whole silhouette. Rather than closing the
+    // body to a point at the nose, a slender rostrum term keeps a tube going
+    // past where the main mass ends — so the forehead bulges and a distinct
+    // snout runs out in front of it.
+    const profile = (t: number) => {
+      const body = Math.pow(
+        Math.max(0, Math.sin(Math.PI * Math.pow(Math.min(t / 0.9, 1), 1.25))),
+        0.8,
+      );
+      const rostrum = 0.19 * smooth(t, 0.7, 0.88) * (1 - smooth(t, 0.93, 1));
+      const stock = 1 - smooth(t, 0, 0.26);
+      return { core: body * 0.95 + rostrum, stock };
+    };
+
+    const radiusAt = (t: number) => {
+      const { core, stock } = profile(t);
+      return {
+        x: girth * (core + 0.05 * stock),
+        y: height * (core + 0.15 * stock),
+      };
+    };
+
+    // Beak angles slightly downward off the melon.
+    const droop = (t: number) =>
+      height * (0.06 * Math.sin(Math.PI * t) - 0.34 * smooth(t, 0.86, 1));
+
+    const body = buildBody({
+      length,
+      segments: 44,
+      radial: 20,
+      radius: radiusAt,
+      offsetY: droop,
+      sharpness: (t) => 2 + 0.35 * Math.sin(Math.PI * t),
     });
+
+    const parts: THREE.BufferGeometry[] = [body];
+
+    parts.push(
+      transformed(
+        buildFluke({
+          halfSpan: 1.5,
+          chordCentre: 0.92,
+          sweep: 0.62,
+          thickness: 0.14,
+          notchDepth: 0.4,
+          notchWidth: 0.16,
+        }),
+        (m) => m.makeTranslation(0, 0, -half * 0.97),
+      ),
+    );
+
+    // Falcate dorsal — the backswept scythe shape, not a shark's triangle.
+    parts.push(
+      transformed(
+        buildFoil({
+          span: 0.92,
+          spanAxis: "y",
+          stations: 9,
+          chord: (s) => 0.78 - 0.55 * Math.pow(s, 1.15),
+          sweep: (s) => -0.62 * Math.pow(s, 1.35),
+          thickness: (s) => 0.1 * (1 - 0.65 * s),
+        }),
+        (m) => m.makeTranslation(0, height * 0.86, -length * 0.02),
+      ),
+    );
+
+    for (const side of [1, -1]) {
+      parts.push(
+        transformed(
+          buildFoil({
+            span: 1.15,
+            spanAxis: "x",
+            sign: side,
+            stations: 9,
+            chord: (s) => 0.5 - 0.3 * Math.pow(s, 1.2),
+            sweep: (s) => -0.42 * Math.pow(s, 1.4),
+            thickness: (s) => 0.09 * (1 - 0.65 * s),
+            rise: (s) => -0.2 * s,
+          }),
+          (m) => m.makeTranslation(side * girth * 0.6, -height * 0.34, length * 0.16),
+        ),
+      );
+    }
+
+    let geometry = applyCountershading(mergeGeometries(parts), 0x3b4f63, 0xc4d2da, 0.48);
+
+    // The dark cape sweeping back from the melon over the shoulder, and the
+    // faint stripe from eye to flipper. Both are standard dolphin markings.
+    geometry = overlayPattern(geometry, (_x, y, z) => {
+      const cape = smooth(z, -length * 0.1, length * 0.34) * smooth(y, -0.1, 0.35);
+      return 1 - cape * 0.3;
+    });
+
+    const eyeT = 0.8;
+    const eyeR = radiusAt(eyeT);
+    geometry = attachDetails(
+      geometry,
+      eyePair(0.07, eyeR.x * 0.88, droop(eyeT) - eyeR.y * 0.32, -half + eyeT * length),
+    );
+
+    const swim = createSwimMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      amplitude: 0.32,
+      wavelength: 2.6 / length,
+      speed: 1.45,
+      mode: "vertical",
+      nose: half,
+      length,
+      onset: 0.2,
+    });
+
+    return rigFromSingleMesh(geometry, swim);
   },
 };
+
+// -- manta -------------------------------------------------------------------
 
 const manta: SpeciesDef = {
   id: "manta",
@@ -260,37 +394,77 @@ const manta: SpeciesDef = {
   turnScale: 0.95,
   viewDistance: 22,
   build() {
-    const span = 9.2;
-    const length = 7.4;
+    const span = 9.4;
+    const length = 7.6;
 
     const wings = buildWingDisc({
       span,
       length,
-      thickness: 0.62,
-      // Spanwise resolution is what lets the ripple read as a curve rather
-      // than a fold, so the wings get more columns than rows.
-      cols: 26,
-      rows: 18,
+      thickness: 0.66,
+      cols: 30,
+      rows: 22,
     });
 
-    const tail = transformed(
-      buildBody({
-        length: 5.4,
-        segments: 14,
+    const parts: THREE.BufferGeometry[] = [wings];
+
+    // Cephalic fins: the two forward-projecting lobes either side of the mouth.
+    // Nothing else in the ocean has them, and without them a ray silhouette is
+    // just a diamond.
+    for (const side of [1, -1]) {
+      const lobe = buildBody({
+        length: 1.75,
+        segments: 12,
         radial: 10,
         radius(t) {
-          // Thick where it meets the body, whipping down to nothing.
-          return { x: 0.02 + t * 0.19, y: 0.02 + t * 0.19 };
+          // Thick where it joins the head, rolled to a blunt tip.
+          const taper = 1 - smooth(t, 0.15, 1) * 0.72;
+          return { x: 0.2 * taper, y: 0.26 * taper };
         },
-      }),
-      (m) => m.makeTranslation(0, 0.06, -length * 0.5 - 2.3),
+      });
+      // Splayed outward and angled slightly down, as they hang when cruising.
+      lobe.rotateY(side * -0.34);
+      lobe.rotateX(0.2);
+
+      parts.push(
+        transformed(lobe, (m) =>
+          m.makeTranslation(side * span * 0.085, -0.12, length * 0.5 + 0.5),
+        ),
+      );
+    }
+
+    // Whip tail.
+    parts.push(
+      transformed(
+        buildBody({
+          length: 5.6,
+          segments: 18,
+          radial: 8,
+          radius(t) {
+            const r = 0.02 + t * 0.2;
+            return { x: r, y: r };
+          },
+        }),
+        (m) => m.makeTranslation(0, 0.08, -length * 0.5 - 2.4),
+      ),
     );
 
-    const geometry = applyCountershading(
-      mergeGeometries([wings, tail]),
-      0x1d232b,
-      0xa9b6c2,
-      0.48,
+    let geometry = applyCountershading(mergeGeometries(parts), 0x1d232b, 0xa9b6c2, 0.46);
+
+    // Gill slits: five dark bars either side of the underside, behind the
+    // mouth. Only visible from below, which is exactly when you want them.
+    geometry = overlayPattern(geometry, (x, y, z) => {
+      if (y > -0.02) return 1;
+      const band = smooth(z, -length * 0.1, length * 0.3) * smooth(Math.abs(x), 0.3, 1.5);
+      if (band <= 0.01) return 1;
+      const phase = z * 2.6;
+      const slit = phase - Math.floor(phase);
+      const edge = Math.min(slit, 1 - slit);
+      return 1 - band * (1 - smooth(edge, 0.03, 0.16)) * 0.5;
+    });
+
+    geometry = attachDetails(
+      geometry,
+      eyePair(0.1, span * 0.12, -0.04, length * 0.42),
     );
 
     const swim = createSwimMaterial({
@@ -309,6 +483,8 @@ const manta: SpeciesDef = {
   },
 };
 
+// -- turtle ------------------------------------------------------------------
+
 const turtle: SpeciesDef = {
   id: "turtle",
   name: "Sea Turtle",
@@ -317,35 +493,78 @@ const turtle: SpeciesDef = {
   turnScale: 0.8,
   viewDistance: 13,
   build() {
+    const shellLength = 5.2;
+
     const shell = buildBody({
-      length: 5.0,
-      segments: 26,
-      radial: 22,
+      length: shellLength,
+      segments: 34,
+      radial: 30,
       radius(t) {
-        const w = Math.sin(Math.PI * Math.pow(t, 1.1));
-        return { x: 0.05 + Math.pow(w, 0.62) * 2.15, y: 0.04 + Math.pow(w, 0.7) * 0.92 };
+        // Skewed forward so the carapace is a teardrop — broadest ahead of
+        // centre, tapering to the rear — rather than a symmetric oval.
+        const w = Math.pow(Math.max(0, Math.sin(Math.PI * Math.pow(t, 1.3))), 0.5);
+        return { x: 0.05 + w * 2.25, y: 0.04 + Math.pow(w, 0.8) * 0.92 };
       },
+      // Moderately full sections: enough to give the margin a defined edge,
+      // not so much that it reads as a rounded box.
+      sharpness: (t) => 2.15 + 0.7 * Math.sin(Math.PI * t),
     });
 
+    // Flatten the plastron. A carapace domes above and is close to flat
+    // beneath; a symmetric section makes the animal read as a ball, which is
+    // the single thing that stops it looking like a turtle.
+    const shellPos = shell.getAttribute("position") as THREE.BufferAttribute;
+    for (let i = 0; i < shellPos.count; i++) {
+      const y = shellPos.getY(i);
+      if (y < 0) shellPos.setY(i, y * 0.4);
+    }
+    shell.computeVertexNormals();
+
+    // Neck and head, with a beaked snout.
     const head = transformed(
       buildBody({
-        length: 1.7,
-        segments: 12,
-        radial: 12,
+        length: 2.1,
+        segments: 18,
+        radial: 14,
         radius(t) {
-          const w = Math.sin(Math.PI * Math.pow(t, 1.0));
-          return { x: 0.05 + w * 0.36, y: 0.05 + w * 0.33 };
+          // Slim neck, swelling to the skull, tapering to a hooked beak.
+          const neck = 0.26 + 0.22 * smooth(t, 0.05, 0.5);
+          const skull = 1 - 0.62 * smooth(t, 0.62, 1);
+          return { x: neck * skull * 1.05, y: neck * skull };
         },
+        offsetY: (t) => -0.06 * smooth(t, 0.5, 1),
+        sharpness: () => 2.3,
       }),
-      (m) => m.makeTranslation(0, -0.1, 3.0),
+      (m) => m.makeTranslation(0, -0.12, 2.95),
     );
 
-    const geometry = applyCountershading(
+    let geometry = applyCountershading(
       mergeGeometries([shell, head]),
       0x35411f,
       0xaaa877,
       0.42,
     );
+
+    // Scutes. The plates are laid out in a rough grid of latitude and longitude
+    // over the carapace, so darkening the seams of that grid reproduces the
+    // pattern without needing a texture or any extra geometry.
+    geometry = overlayPattern(geometry, (x, y, z) => {
+      // Carapace only: the head and the flat plastron carry different plates.
+      if (y < -0.28 || z > 2.3) return 1;
+      const radius = Math.hypot(x, z);
+      if (radius < 0.25) return 1;
+
+      const longitude = ((Math.atan2(x, z) / Math.PI + 1) * 0.5) * 9;
+      const latitude = (Math.atan2(y + 0.3, radius) / (Math.PI * 0.5)) * 3.4;
+
+      const du = Math.abs(longitude - Math.round(longitude));
+      const dv = Math.abs(latitude - Math.round(latitude));
+      const seam = Math.min(du, dv);
+
+      return 0.5 + 0.5 * smooth(seam, 0.015, 0.12);
+    });
+
+    geometry = attachDetails(geometry, eyePair(0.08, 0.23, 0.02, 3.62));
 
     // The shell barely flexes; almost all the motion comes from the flippers.
     const swim = createSwimMaterial({
@@ -355,8 +574,8 @@ const turtle: SpeciesDef = {
       wavelength: 0.5,
       speed: 0.55,
       mode: "vertical",
-      nose: 2.5,
-      length: 5.0,
+      nose: 2.6,
+      length: shellLength,
       onset: 0.5,
     });
 
@@ -366,10 +585,10 @@ const turtle: SpeciesDef = {
     root.add(shellMesh);
 
     const flipperMaterial = new THREE.MeshLambertMaterial({
-      color: 0x76854f,
-      flatShading: true,
-      // Flippers are thin and get seen from both sides as they row.
-      side: THREE.DoubleSide,
+      // Close to the carapace's own dark tone. Brighter than this and the
+      // flippers read as detached paddles rather than part of the animal.
+      color: 0x55632f,
+      flatShading: false,
     });
 
     interface Flipper {
@@ -390,17 +609,19 @@ const turtle: SpeciesDef = {
       amplitude: number,
     ) => {
       const pivot = new THREE.Group();
-      pivot.position.set(side * 1.15, -0.12, z);
+      pivot.position.set(side * 1.2, -0.14, z);
 
       const blade = new THREE.Mesh(
-        buildFin({
-          chordRoot: chord,
-          chordTip: chord * 0.42,
+        buildFoil({
           span,
-          thickness: 0.08,
-          sweep: chord * 0.55,
           spanAxis: "x",
           sign: side,
+          stations: 10,
+          // Broad near the shoulder, tapering to a rounded paddle tip.
+          chord: (s) => chord * (1 - 0.55 * Math.pow(s, 1.6)),
+          sweep: (s) => -chord * 0.42 * Math.pow(s, 1.35),
+          thickness: (s) => chord * 0.16 * (1 - 0.6 * s),
+          rise: (s) => -0.1 * s,
         }),
         flipperMaterial,
       );
@@ -412,10 +633,10 @@ const turtle: SpeciesDef = {
     };
 
     // Front pair does the rowing; the back pair mostly trails and steers.
-    addFlipper(1, 1.35, 2.5, 1.15, 0, 0.48);
-    addFlipper(-1, 1.35, 2.5, 1.15, Math.PI, 0.48);
-    addFlipper(1, -1.5, 1.35, 0.8, Math.PI * 0.6, 0.2);
-    addFlipper(-1, -1.5, 1.35, 0.8, Math.PI * 1.6, 0.2);
+    addFlipper(1, 1.4, 2.7, 1.2, 0, 0.48);
+    addFlipper(-1, 1.4, 2.7, 1.2, Math.PI, 0.48);
+    addFlipper(1, -1.55, 1.4, 0.85, Math.PI * 0.6, 0.2);
+    addFlipper(-1, -1.55, 1.4, 0.85, Math.PI * 1.6, 0.2);
 
     return {
       root,
@@ -423,8 +644,8 @@ const turtle: SpeciesDef = {
         swim.setRate(rate);
         swim.setTime(elapsed);
 
-        // Roughly one unhurried stroke every nine seconds. The earlier tempo
-        // read as paddling hard; nothing here should look like effort.
+        // Roughly one unhurried stroke every nine seconds. Nothing here should
+        // look like effort.
         const beat = elapsed * 0.68 * rate;
         for (const flipper of flippers) {
           const wave = Math.sin(beat + flipper.phase);
