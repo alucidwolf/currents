@@ -131,6 +131,32 @@ function playerCommand(): SteerCommand {
   };
 }
 
+/**
+ * Turn the arrow keys into a heading.
+ *
+ * Relative where the cursor is absolute: a key says "keep turning this way",
+ * not "go to that point". The commanded yaw is therefore led far enough ahead
+ * of the current one that it is always the turn-rate limit doing the work, and
+ * the eased axis scales that limit — so a turn leans in when the key goes down
+ * and unwinds when it comes up, instead of switching on and off.
+ *
+ * Speed is not touched. The keys change where the animal is pointing and
+ * nothing else; it cruises at the same pace whether it is turning or not.
+ */
+function keyCommand(): SteerCommand {
+  const strength = Math.max(Math.abs(input.steerX), Math.abs(input.steerY));
+
+  return {
+    yaw: swimmer.yaw + input.steerX * 1.2,
+    // With no vertical key held this is level, so the animal eases back to flat
+    // rather than holding whatever climb it was last given. A pitch that sticks
+    // is the difference between steering and trimming, and only one of those is
+    // relaxing to use.
+    pitch: input.steerY * SWIM.keySteerMaxPitch,
+    turnRate: SWIM.playerTurnRate * (species?.turnScale ?? 1) * strength,
+  };
+}
+
 // -- frame -------------------------------------------------------------------
 
 const loop = createLoop((dt, elapsed) => {
@@ -140,8 +166,10 @@ const loop = createLoop((dt, elapsed) => {
   if (creature && species) {
     let command: SteerCommand;
 
-    if (input.steering) {
-      command = playerCommand();
+    // The cursor wins when both are in use: it names a point to swim to, which
+    // the keys cannot contradict without one of them being ignored anyway.
+    if (input.steering || input.keySteering) {
+      command = input.steering ? playerCommand() : keyCommand();
       // Keep feeding the trail while the player drives, so the autopilot does
       // not immediately double back over ground just covered when handed back.
       wander.recordPlayerPosition(dt, swimmer.position);

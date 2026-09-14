@@ -92,6 +92,23 @@ export const SWIM = {
   speedBreathPeriod: 16,
   /** Maximum turn rate under player control, radians/sec. */
   playerTurnRate: 0.95,
+  /**
+   * How quickly arrow-key steering eases in and out, per second.
+   *
+   * A key is a step input: pressed, the turn would otherwise go from nothing to
+   * full rate in one frame, which is precisely the jolt this whole thing is
+   * meant not to have. Ramping the axis gives a turn that leans in and settles
+   * out of its own accord. Higher is more responsive and more abrupt; much
+   * below 2 and the animal feels like it is ignoring you.
+   */
+  keySteerResponse: 2.8,
+  /**
+   * How far off level the arrow keys can pitch the animal.
+   *
+   * Deliberately short of the cursor's 0.62: a held key is easy to leave held,
+   * and a steep sustained climb just parks the animal against the surface.
+   */
+  keySteerMaxPitch: 0.46,
   /** Maximum turn rate under autopilot, radians/sec. Gentler on purpose. */
   wanderTurnRate: 0.34,
   /** How sharply the body rolls into a turn. */

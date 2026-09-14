@@ -30,11 +30,20 @@ npm run dev      # http://127.0.0.1:5173
 | **Left-drag** | Orbit the camera. It trails lazily through turns rather than snapping. |
 | **Scroll** | Zoom in and out. |
 | **Right-hold** | Steer: the animal curves toward your cursor. Release and it goes back to wandering on its own. |
+| **Arrow keys** | Steer without the mouse — left and right turn, up and down climb and dive. Speed never changes; the keys only change where the animal is pointing. Let go and it levels off and goes back to wandering. |
 | **H** | Toggle the control hints. |
 | **F** | Toggle the stats overlay (fps, draw calls, chunk count, depth). |
 
 The hints fade out on their own after a few seconds of stillness and come back
 when you move the mouse.
+
+The two ways of steering are different in kind. The cursor is *absolute* — it
+names a point out in the water and the animal turns to face it. The keys are
+*relative* — they say "keep turning this way". A key is also a step input, so
+each axis is eased rather than read raw; otherwise a turn would go from nothing
+to full rate in a single frame, which is exactly the jolt this is meant not to
+have. The ease-out runs before control is handed back, so a turn unwinds instead
+of being dropped mid-lean.
 
 ## URL options
 
@@ -140,7 +149,8 @@ shares one instanced mesh.
 ## The wander, and why it is tested
 
 Left alone, the animal is always under autopilot — holding the right mouse
-button suppresses it, releasing restores it. Four influences combine:
+button or an arrow key suppresses it, releasing restores it. Four influences
+combine:
 
 1. **Meander** — smooth noise, for organic curves instead of straight lines.
 2. **Anti-circling** — a fading memory of recent positions pushes it away from

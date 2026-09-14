@@ -1,11 +1,18 @@
 /**
- * Pointer input.
+ * Pointer and key input.
  *
- * Two gestures only, and they are independent: left-drag orbits the camera,
+ * Two pointer gestures, and they are independent: left-drag orbits the camera,
  * right-hold steers the animal. Both can run at once. Everything else the
  * browser wants to do with those buttons — context menus, text selection,
  * drag-to-scroll on touch — is suppressed.
+ *
+ * The arrow keys are a second way to steer, for anyone who would rather not
+ * hold a mouse button down to swim. They are reported here as two smoothed
+ * axes rather than as raw key state, because a key is a step input and the
+ * animal should lean into a turn rather than snap into one.
  */
+
+import { SWIM } from "../core/config";
 
 export interface InputState {
   /** Accumulated left-drag since the last frame consumed it, in pixels. */
@@ -15,6 +22,17 @@ export interface InputState {
   wheel: number;
   /** True while the right button is held: the swimmer is under player command. */
   steering: boolean;
+  /** Smoothed arrow-key steering: -1 is left/down, +1 is right/up. */
+  steerX: number;
+  steerY: number;
+  /**
+   * True while the arrow keys have authority over the animal.
+   *
+   * Stays true through the ease-out after the last key is released, so the turn
+   * unwinds under the player's command rather than being handed back to the
+   * autopilot mid-lean.
+   */
+  keySteering: boolean;
   /** Cursor in normalised device coordinates, for unprojecting a steer target. */
   ndcX: number;
   ndcY: number;
@@ -36,6 +54,9 @@ export function createInput(target: HTMLElement): Input {
     dragY: 0,
     wheel: 0,
     steering: false,
+    steerX: 0,
+    steerY: 0,
+    keySteering: false,
     ndcX: 0,
     ndcY: 0,
     idleTime: 0,
@@ -45,6 +66,16 @@ export function createInput(target: HTMLElement): Input {
   let steerPointerId: number | null = null;
   let lastX = 0;
   let lastY = 0;
+
+  const held = { left: false, right: false, up: false, down: false };
+  type Arrow = keyof typeof held;
+
+  const ARROWS: Record<string, Arrow> = {
+    ArrowLeft: "left",
+    ArrowRight: "right",
+    ArrowUp: "up",
+    ArrowDown: "down",
+  };
 
   const markActive = () => {
     state.idleTime = 0;
@@ -116,7 +147,35 @@ export function createInput(target: HTMLElement): Input {
     event.preventDefault();
   };
 
-  const onKey = () => markActive();
+  const onKeyDown = (event: KeyboardEvent) => {
+    markActive();
+
+    const arrow = ARROWS[event.key];
+    // Leave modified arrows alone — Alt+Left is the browser's back button, and
+    // taking it over would be a genuinely annoying thing for a page to do.
+    if (!arrow || event.altKey || event.ctrlKey || event.metaKey) return;
+
+    held[arrow] = true;
+    // Otherwise the page scrolls under the canvas on every turn.
+    event.preventDefault();
+  };
+
+  const onKeyUp = (event: KeyboardEvent) => {
+    markActive();
+    const arrow = ARROWS[event.key];
+    if (arrow) held[arrow] = false;
+  };
+
+  /**
+   * Drop every held key.
+   *
+   * A keyup that arrives while the window is not focused is never delivered, so
+   * alt-tabbing mid-turn would otherwise leave the animal circling forever with
+   * no key down to explain it.
+   */
+  const releaseKeys = () => {
+    held.left = held.right = held.up = held.down = false;
+  };
 
   target.addEventListener("pointerdown", onPointerDown);
   target.addEventListener("pointermove", onPointerMove);
@@ -124,7 +183,9 @@ export function createInput(target: HTMLElement): Input {
   target.addEventListener("pointercancel", onPointerUp);
   target.addEventListener("wheel", onWheel, { passive: false });
   target.addEventListener("contextmenu", onContextMenu);
-  window.addEventListener("keydown", onKey);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("blur", releaseKeys);
 
   return {
     get dragX() {
@@ -138,6 +199,15 @@ export function createInput(target: HTMLElement): Input {
     },
     get steering() {
       return state.steering;
+    },
+    get steerX() {
+      return state.steerX;
+    },
+    get steerY() {
+      return state.steerY;
+    },
+    get keySteering() {
+      return state.keySteering;
     },
     get ndcX() {
       return state.ndcX;
@@ -155,6 +225,21 @@ export function createInput(target: HTMLElement): Input {
     },
     tick(dt: number) {
       state.idleTime += dt;
+
+      const wantX = (held.right ? 1 : 0) - (held.left ? 1 : 0);
+      const wantY = (held.up ? 1 : 0) - (held.down ? 1 : 0);
+      const ease = Math.min(1, dt * SWIM.keySteerResponse);
+
+      state.steerX += (wantX - state.steerX) * ease;
+      state.steerY += (wantY - state.steerY) * ease;
+
+      // An exponential ease never quite reaches its target, so snap the tail to
+      // zero. Without this the axes hold a vanishing residue forever and the
+      // autopilot is never handed back.
+      if (wantX === 0 && Math.abs(state.steerX) < 0.004) state.steerX = 0;
+      if (wantY === 0 && Math.abs(state.steerY) < 0.004) state.steerY = 0;
+
+      state.keySteering = state.steerX !== 0 || state.steerY !== 0;
     },
     dispose() {
       target.removeEventListener("pointerdown", onPointerDown);
@@ -163,7 +248,9 @@ export function createInput(target: HTMLElement): Input {
       target.removeEventListener("pointercancel", onPointerUp);
       target.removeEventListener("wheel", onWheel);
       target.removeEventListener("contextmenu", onContextMenu);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", releaseKeys);
     },
   };
 }
