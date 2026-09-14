@@ -62,7 +62,10 @@ const FRAGMENT_BODY = /* glsl */ `
 export function makeCausticTerrainMaterial(): CausticMaterial {
   const material = new THREE.MeshLambertMaterial({
     vertexColors: true,
-    flatShading: true,
+    // Smooth-shaded: at this chunk resolution flat shading turned every slope
+    // into a visible staircase of facets. The terrain now carries its detail
+    // in the geometry rather than in the lighting.
+    flatShading: false,
   });
 
   const uniforms = {

@@ -2,7 +2,9 @@ import * as THREE from "three";
 import { WORLD } from "../core/config";
 import { chunkRng, randRange } from "../core/rng";
 import type { Rng } from "../core/rng";
+import { buildBody } from "../creatures/shapes";
 import type { PointOfInterest } from "../creatures/wander";
+import { buildShipwreck, shipwreckForChunk } from "./landmarks";
 import type { Terrain } from "./terrain";
 
 /**
@@ -17,13 +19,19 @@ import type { Terrain } from "./terrain";
  */
 
 const CORAL_COLORS = [0xc4705f, 0xd08a63, 0xa8566a, 0xc9a15c, 0x8f6b9e, 0xb5555a];
-const KELP_COLORS = [0x4e6b39, 0x5c7a3c, 0x3f5c33, 0x68864a];
+// Lifted well off black: against a dark teal fog the earlier greens read as
+// silhouetted poles rather than as plants.
+const KELP_COLORS = [0x6d8a45, 0x7d9a4c, 0x5c7a41, 0x8aa356, 0x647f3e];
 const ROCK_COLORS = [0x5c6068, 0x4e535c, 0x6b6f76];
 
-/** Props per chunk. Enough to feel inhabited without filling the water. */
-const CORAL_PER_CHUNK = 14;
-const ROCKS_PER_CHUNK = 9;
-const KELP_PER_CHUNK = 11;
+/**
+ * Attempts per chunk, not placements. The reef-density field rejects most of
+ * them on bare sand and lets nearly all of them through in a garden, which is
+ * what produces dense reefs and open flats instead of an even sprinkle.
+ */
+const CORAL_ATTEMPTS = 30;
+const ROCK_ATTEMPTS = 12;
+const KELP_ATTEMPTS = 24;
 
 /** Nothing grows on anything steeper than this. */
 const MAX_SLOPE = 0.55;
@@ -44,56 +52,172 @@ export interface ChunkDecor {
 
 /** A lumpy boulder. Rigid: flex stays at zero. */
 function makeBoulder(rng: Rng): THREE.BufferGeometry {
-  const geometry = new THREE.IcosahedronGeometry(1, 0);
+  // Detail 1 gives 80 faces rather than 20 — still obviously a rock, but no
+  // longer an obvious icosahedron. Polyhedron geometries are non-indexed, so
+  // these keep hard facets even under the smooth-shaded decor material.
+  const geometry = new THREE.IcosahedronGeometry(1, 1);
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
 
-  // Jitter each vertex so no two boulders are the same shape.
+  // Lumpiness must be a function of *direction*, not of vertex index. These
+  // geometries are non-indexed, so every triangle carries its own copy of each
+  // corner; displacing those copies independently tears the rock into loose
+  // shards. Deriving the offset from the position means coincident corners
+  // always move together and the surface stays welded.
+  const phaseX = rng() * Math.PI * 2;
+  const phaseY = rng() * Math.PI * 2;
+  const phaseZ = rng() * Math.PI * 2;
+  const squash = randRange(rng, 0.62, 0.85);
+
+  const v = new THREE.Vector3();
   for (let i = 0; i < position.count; i++) {
-    const scale = 0.72 + rng() * 0.56;
-    position.setXYZ(
-      i,
-      position.getX(i) * scale,
-      position.getY(i) * scale * 0.72,
-      position.getZ(i) * scale,
-    );
+    v.set(position.getX(i), position.getY(i), position.getZ(i));
+    const lump =
+      0.84 +
+      0.16 * Math.sin(v.x * 4.1 + phaseX) +
+      0.13 * Math.sin(v.y * 5.3 + phaseY) +
+      0.11 * Math.sin(v.z * 3.7 + phaseZ);
+    v.multiplyScalar(lump);
+    position.setXYZ(i, v.x, v.y * squash, v.z);
   }
+
   geometry.computeVertexNormals();
   return geometry;
 }
 
+/** A tapered tube standing on the seabed. The basic unit of most coral here. */
+function makeStalk(
+  rng: Rng,
+  height: number,
+  baseRadius: number,
+  tipRadius: number,
+): THREE.BufferGeometry {
+  const stalk = buildBody({
+    length: height,
+    segments: 6,
+    radial: 8,
+    radius(t) {
+      // t = 0 is the base of the tube, t = 1 the tip.
+      const r = baseRadius + (tipRadius - baseRadius) * Math.pow(t, 0.8);
+      return { x: r, y: r };
+    },
+  });
+
+  // buildBody runs along Z and is centred; stand it up with its foot at zero.
+  stalk.rotateX(-Math.PI / 2);
+  stalk.translate(0, height / 2, 0);
+  // A slight lean so a cluster never looks like a set of identical posts.
+  stalk.rotateZ(randRange(rng, -0.12, 0.12));
+  return stalk;
+}
+
 /**
- * Branching coral: a few tapered spars fanning upward and outward.
+ * Branching coral: tapered tubes fanning upward and outward.
  *
- * Built from stretched octahedra rather than cylinders — half the vertices,
- * and the faceting suits the low-poly look better than a smooth tube would.
+ * These were stretched octahedra, which is where most of the "blocky" read
+ * came from — eight faces cannot describe a branch. Proper tubes cost a few
+ * dozen more vertices each and are the single biggest fidelity win down here.
  */
-function makeCoral(rng: Rng): THREE.BufferGeometry {
+function makeBranchingCoral(rng: Rng): THREE.BufferGeometry {
   const branches: THREE.BufferGeometry[] = [];
-  const count = 3 + Math.floor(rng() * 4);
+  const count = 4 + Math.floor(rng() * 5);
 
   for (let i = 0; i < count; i++) {
-    const branch = new THREE.OctahedronGeometry(1, 0);
-    const height = randRange(rng, 0.9, 2.1);
-    const thickness = randRange(rng, 0.16, 0.32);
+    const height = randRange(rng, 0.9, 2.4);
+    const branch = makeStalk(rng, height, randRange(rng, 0.1, 0.2), 0.035);
 
-    branch.scale(thickness, height, thickness);
-    branch.translate(0, height, 0);
-
-    // Fan outward: the further from centre, the more it leans.
-    const lean = randRange(rng, 0.05, 0.5);
+    const lean = randRange(rng, 0.08, 0.55);
     const around = rng() * Math.PI * 2;
     branch.rotateX(Math.cos(around) * lean);
     branch.rotateZ(Math.sin(around) * lean);
     branch.translate(
-      Math.sin(around) * randRange(rng, 0, 0.4),
+      Math.sin(around) * randRange(rng, 0, 0.45),
       0,
-      Math.cos(around) * randRange(rng, 0, 0.4),
+      Math.cos(around) * randRange(rng, 0, 0.45),
     );
 
     branches.push(branch);
   }
 
   return mergeSimple(branches);
+}
+
+/** Brain coral: a low rounded dome, the calm counterpoint to the branches. */
+function makeBrainCoral(rng: Rng): THREE.BufferGeometry {
+  const dome = new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.62);
+  dome.scale(1, randRange(rng, 0.5, 0.85), randRange(rng, 0.82, 1.18));
+
+  // Same rule as the boulders: the wobble is derived from position so the
+  // duplicated vertices along the sphere's UV seam move identically and no
+  // crack opens up down one side.
+  const phase = rng() * Math.PI * 2;
+  const position = dome.getAttribute("position") as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+
+  for (let i = 0; i < position.count; i++) {
+    v.set(position.getX(i), position.getY(i), position.getZ(i));
+    const wobble =
+      0.94 + 0.07 * Math.sin(v.x * 5.2 + phase) + 0.06 * Math.sin(v.z * 4.4 - phase);
+    v.multiplyScalar(wobble);
+    position.setXYZ(i, v.x, v.y, v.z);
+  }
+
+  dome.computeVertexNormals();
+  return dome;
+}
+
+/** Fan coral: a broad thin blade standing across the current. */
+function makeFanCoral(rng: Rng): THREE.BufferGeometry {
+  const width = randRange(rng, 1.2, 2.4);
+  const height = randRange(rng, 1.0, 2.2);
+
+  const fan = new THREE.PlaneGeometry(width, height, 7, 6);
+  fan.translate(0, height / 2, 0);
+
+  // Round off the silhouette and ripple the surface, so it reads as a living
+  // fan rather than a rectangle of card.
+  const position = fan.getAttribute("position") as THREE.BufferAttribute;
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const t = y / height;
+    const taper = Math.sin(Math.PI * Math.min(1, t * 1.15 + 0.06));
+    position.setX(i, x * (0.35 + taper * 0.75));
+    position.setZ(i, Math.sin(x * 3.1 + t * 2.0) * 0.12);
+  }
+  fan.computeVertexNormals();
+  fan.rotateY(rng() * Math.PI);
+
+  // Thin blades vanish edge-on, so pair it with a narrower cross blade.
+  const cross = fan.clone();
+  cross.scale(0.55, 0.85, 1);
+  cross.rotateY(Math.PI / 2);
+
+  return mergeSimple([fan, cross]);
+}
+
+/** Tube coral: a tight clump of thin vertical pipes. */
+function makeTubeCoral(rng: Rng): THREE.BufferGeometry {
+  const tubes: THREE.BufferGeometry[] = [];
+  const count = 5 + Math.floor(rng() * 6);
+
+  for (let i = 0; i < count; i++) {
+    const height = randRange(rng, 0.5, 1.7);
+    const tube = makeStalk(rng, height, randRange(rng, 0.07, 0.13), 0.09);
+    const around = rng() * Math.PI * 2;
+    const spread = randRange(rng, 0, 0.38);
+    tube.translate(Math.sin(around) * spread, 0, Math.cos(around) * spread);
+    tubes.push(tube);
+  }
+
+  return mergeSimple(tubes);
+}
+
+function makeCoral(rng: Rng): THREE.BufferGeometry {
+  const roll = rng();
+  if (roll < 0.42) return makeBranchingCoral(rng);
+  if (roll < 0.66) return makeTubeCoral(rng);
+  if (roll < 0.86) return makeBrainCoral(rng);
+  return makeFanCoral(rng);
 }
 
 /**
@@ -270,13 +394,16 @@ export function buildChunkDecor(
   const coralFlex = (y: number, maxY: number) => (y / maxY) * 0.22;
   const kelpFlex = (y: number, maxY: number) => Math.pow(Math.max(y, 0) / maxY, 1.4);
 
-  for (let i = 0; i < ROCKS_PER_CHUNK; i++) {
+  // Boulders scatter everywhere — they are geology, not biology — but thin out
+  // a little in the lushest gardens where coral has taken the ground.
+  for (let i = 0; i < ROCK_ATTEMPTS; i++) {
     const spot = findSpot();
     if (!spot) continue;
+    if (rng() < terrain.reefDensityAt(spot.x, spot.z) * 0.45) continue;
     place(
       makeBoulder(rng),
       { ...spot, y: spot.y - 0.25 },
-      randRange(rng, 0.7, 2.6),
+      randRange(rng, 0.7, 2.8),
       ROCK_COLORS[Math.floor(rng() * ROCK_COLORS.length)]!,
       rigid,
       true,
@@ -284,13 +411,19 @@ export function buildChunkDecor(
   }
 
   let coralPlaced = 0;
-  for (let i = 0; i < CORAL_PER_CHUNK; i++) {
+  for (let i = 0; i < CORAL_ATTEMPTS; i++) {
     const spot = findSpot();
     if (!spot) continue;
+
+    const density = terrain.reefDensityAt(spot.x, spot.z);
+    if (rng() > density) continue;
+
     place(
       makeCoral(rng),
       spot,
-      randRange(rng, 0.55, 1.5),
+      // Coral grows larger where the reef is richest, so a garden reads as
+      // established rather than just crowded.
+      randRange(rng, 0.75, 1.6) * (0.8 + density * 0.95),
       CORAL_COLORS[Math.floor(rng() * CORAL_COLORS.length)]!,
       coralFlex,
       true,
@@ -308,17 +441,48 @@ export function buildChunkDecor(
     }
   }
 
-  for (let i = 0; i < KELP_PER_CHUNK; i++) {
+  for (let i = 0; i < KELP_ATTEMPTS; i++) {
     const spot = findSpot();
     if (!spot) continue;
+    if (rng() > terrain.reefDensityAt(spot.x, spot.z) * 0.9) continue;
     place(
       makeKelp(rng),
       spot,
-      randRange(rng, 0.8, 1.5),
+      randRange(rng, 0.8, 1.6),
       KELP_COLORS[Math.floor(rng() * KELP_COLORS.length)]!,
       kelpFlex,
       false,
     );
+  }
+
+  // --- Landmark: a wreck, if this chunk happens to hold one ------------------
+  const wreck = shipwreckForChunk(worldSeed, cx, cz);
+  if (wreck) {
+    const worldX = originX + wreck.localX;
+    const worldZ = originZ + wreck.localZ;
+    const settledY = terrain.heightAt(worldX, worldZ) - wreck.bury;
+
+    const orientation = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(wreck.pitch, wreck.yaw, wreck.roll, "YXZ"),
+    );
+    const wreckMatrix = new THREE.Matrix4().compose(
+      new THREE.Vector3(wreck.localX, settledY, wreck.localZ),
+      orientation,
+      new THREE.Vector3(wreck.scale, wreck.scale, wreck.scale),
+    );
+
+    for (const part of buildShipwreck(rng)) {
+      color.setHex(part.color);
+      color.multiplyScalar(randRange(rng, 0.85, 1.1));
+      appendProp(acc, part.geometry, wreckMatrix, color, rigid);
+    }
+
+    // Worth a detour: wrecks outrank coral and fish as somewhere to drift past.
+    pointsOfInterest.push({
+      key: `wreck:${cx}:${cz}`,
+      position: new THREE.Vector3(worldX, settledY + 12, worldZ),
+      weight: 5,
+    });
   }
 
   if (acc.positions.length === 0) return null;
@@ -350,7 +514,10 @@ export interface DecorMaterial {
 export function makeDecorMaterial(): DecorMaterial {
   const material = new THREE.MeshLambertMaterial({
     vertexColors: true,
-    flatShading: true,
+    // Smooth now that coral is built from tubes and domes rather than
+    // octahedra. Boulders keep their facets regardless, because polyhedron
+    // geometries are non-indexed and so never share a normal between faces.
+    flatShading: false,
     side: THREE.DoubleSide,
   });
 

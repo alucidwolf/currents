@@ -5,14 +5,16 @@ import * as THREE from "three";
  *
  * Rigging four creatures would mean bones, weights, skinned meshes and an
  * animation system. Instead a travelling sine wave is injected into the vertex
- * stage and the whole body flexes on the GPU for the cost of two uniforms.
+ * stage and the whole body flexes on the GPU for the cost of a few uniforms.
  *
  * The wave is weighted so the nose barely moves and the tail moves most, which
  * is the single detail that separates "swimming" from "wobbling".
  *
- * Vertex normals are deliberately not recomputed for the deformation. At these
- * amplitudes, under flat shading, seen through fog, the lighting error is not
- * perceptible — and skipping it keeps this to a handful of instructions.
+ * Normals are corrected analytically to match the bend. Under flat shading this
+ * did not matter — face normals come from screen-space derivatives of the
+ * already-displaced positions — but smooth shading reads the vertex normal
+ * directly, and an uncorrected one makes a flexing body look as though the
+ * light is sliding across a rigid object.
  */
 export type SwimMode = "vertical" | "lateral" | "wing";
 
@@ -46,10 +48,23 @@ export interface SwimMaterial {
 
 let cacheKeyCounter = 0;
 
+const UNIFORM_DECL = /* glsl */ `
+  uniform float uSwimTime;
+  uniform float uSwimAmp;
+  uniform float uSwimWave;
+  uniform float uSwimSpeed;
+  uniform float uSwimNose;
+  uniform float uSwimLength;
+  uniform float uSwimOnset;
+  uniform float uSwimSpan;
+`;
+
 export function createSwimMaterial(options: SwimMaterialOptions): SwimMaterial {
   const material = new THREE.MeshLambertMaterial({
     color: options.color,
-    flatShading: options.flatShading ?? true,
+    // Smooth by default now: the bodies carry enough segments that faceting
+    // reads as cheapness rather than style.
+    flatShading: options.flatShading ?? false,
     vertexColors: options.vertexColors ?? false,
   });
 
@@ -64,26 +79,24 @@ export function createSwimMaterial(options: SwimMaterialOptions): SwimMaterial {
     uSwimSpan: { value: options.span ?? 1 },
   };
 
-  const body = deformationFor(options.mode);
   const cacheKey = `currents-swim-${options.mode}-${cacheKeyCounter++}`;
 
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
 
     shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", `#include <common>\n${UNIFORM_DECL}`)
+      // Normals must be fixed up before Three transforms them, which happens
+      // between these two chunks — hence two separate injections rather than
+      // doing everything in one place.
       .replace(
-        "#include <common>",
-        `#include <common>
-         uniform float uSwimTime;
-         uniform float uSwimAmp;
-         uniform float uSwimWave;
-         uniform float uSwimSpeed;
-         uniform float uSwimNose;
-         uniform float uSwimLength;
-         uniform float uSwimOnset;
-         uniform float uSwimSpan;`,
+        "#include <beginnormal_vertex>",
+        `#include <beginnormal_vertex>\n${normalCorrectionFor(options.mode)}`,
       )
-      .replace("#include <begin_vertex>", `#include <begin_vertex>\n${body}`);
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>\n${deformationFor(options.mode)}`,
+      );
   };
 
   material.customProgramCacheKey = () => cacheKey;
@@ -99,14 +112,28 @@ export function createSwimMaterial(options: SwimMaterialOptions): SwimMaterial {
   };
 }
 
+/** Weight and phase, shared by the position and normal passes. */
+function bodyTerms(): string {
+  return /* glsl */ `
+    float bodyT = clamp( ( uSwimNose - position.z ) / max( uSwimLength, 0.0001 ), 0.0, 1.0 );
+    float w = smoothstep( uSwimOnset, 1.0, bodyT );
+    float phase = position.z * uSwimWave + uSwimTime * uSwimSpeed;
+  `;
+}
+
+function wingTerms(): string {
+  return /* glsl */ `
+    float spanT = clamp( abs( position.x ) / max( uSwimSpan, 0.0001 ), 0.0, 1.0 );
+    float w = pow( spanT, 1.45 );
+    float phase = abs( position.x ) * uSwimWave - uSwimTime * uSwimSpeed;
+  `;
+}
+
 function deformationFor(mode: SwimMode): string {
   if (mode === "wing") {
-    // Rays ripple outward along the span rather than back along the body.
     return /* glsl */ `
       {
-        float spanT = clamp( abs( transformed.x ) / max( uSwimSpan, 0.0001 ), 0.0, 1.0 );
-        float w = pow( spanT, 1.45 );
-        float phase = abs( transformed.x ) * uSwimWave - uSwimTime * uSwimSpeed;
+        ${wingTerms()}
         transformed.y += sin( phase ) * uSwimAmp * w;
         // A touch of forward-back sweep stops the wings looking like they are
         // flapping in place.
@@ -118,10 +145,63 @@ function deformationFor(mode: SwimMode): string {
   const axis = mode === "vertical" ? "y" : "x";
   return /* glsl */ `
     {
-      float bodyT = clamp( ( uSwimNose - transformed.z ) / max( uSwimLength, 0.0001 ), 0.0, 1.0 );
-      float w = smoothstep( uSwimOnset, 1.0, bodyT );
-      float phase = transformed.z * uSwimWave + uSwimTime * uSwimSpeed;
+      ${bodyTerms()}
       transformed.${axis} += sin( phase ) * uSwimAmp * w;
+    }
+  `;
+}
+
+/**
+ * Rotate the vertex normal to match the local slope the bend introduces.
+ *
+ * For a displacement d(u) along one axis, the surface tangent tilts by
+ * d'(u) and the normal rotates by the same angle in the opposite sense. Only
+ * the dominant term of the derivative is used — the contribution from the
+ * weighting ramp is small enough to be invisible and doubles the instruction
+ * count to include.
+ */
+function normalCorrectionFor(mode: SwimMode): string {
+  if (mode === "wing") {
+    return /* glsl */ `
+      {
+        ${wingTerms()}
+        float slope = cos( phase ) * uSwimWave * uSwimAmp * w * sign( position.x );
+        float c = inversesqrt( 1.0 + slope * slope );
+        float s = slope * c;
+        objectNormal = normalize( vec3(
+          objectNormal.x * c - objectNormal.y * s,
+          objectNormal.x * s + objectNormal.y * c,
+          objectNormal.z
+        ) );
+      }
+    `;
+  }
+
+  if (mode === "vertical") {
+    return /* glsl */ `
+      {
+        ${bodyTerms()}
+        float slope = cos( phase ) * uSwimWave * uSwimAmp * w;
+        float c = inversesqrt( 1.0 + slope * slope );
+        objectNormal = normalize( vec3(
+          objectNormal.x,
+          objectNormal.y * c + objectNormal.z * slope * c,
+          -objectNormal.y * slope * c + objectNormal.z * c
+        ) );
+      }
+    `;
+  }
+
+  return /* glsl */ `
+    {
+      ${bodyTerms()}
+      float slope = cos( phase ) * uSwimWave * uSwimAmp * w;
+      float c = inversesqrt( 1.0 + slope * slope );
+      objectNormal = normalize( vec3(
+        objectNormal.x * c + objectNormal.z * slope * c,
+        objectNormal.y,
+        -objectNormal.x * slope * c + objectNormal.z * c
+      ) );
     }
   `;
 }

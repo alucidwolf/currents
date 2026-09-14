@@ -82,8 +82,10 @@ function buildCetacean(options: CetaceanOptions): CreatureRig {
 
   const body = buildBody({
     length,
-    segments: 18,
-    radial: 9,
+    // Generous for what is a single draw call. At 9 radial segments the
+    // silhouette visibly polygonised against open water; 18 reads as round.
+    segments: 34,
+    radial: 18,
     radius(t) {
       // Peaks around 60% of the way toward the nose, closing to a point at
       // both ends. The exponent is what places the shoulder.
@@ -97,31 +99,41 @@ function buildCetacean(options: CetaceanOptions): CreatureRig {
 
   const parts: THREE.BufferGeometry[] = [body];
 
+  // Fins are de-indexed before merging. The body wants smooth shading, but a
+  // fin is a flat blade with hard edges — sharing vertices between its faces
+  // would average those edges into a rounded blob. Splitting them gives each
+  // face its own normal, so one material yields a smooth body and crisp fins.
+  const hardEdged = (g: THREE.BufferGeometry) => g.toNonIndexed();
+
   // Tail fluke: two blades reaching out sideways, flat to the water.
   for (const side of [1, -1]) {
-    const fluke = buildFin({
-      chordRoot: length * 0.17,
-      chordTip: length * 0.07,
-      span: flukeSpan,
-      thickness: 0.09,
-      sweep: length * 0.055,
-      spanAxis: "x",
-      sign: side,
-    });
+    const fluke = hardEdged(
+      buildFin({
+        chordRoot: length * 0.17,
+        chordTip: length * 0.07,
+        span: flukeSpan,
+        thickness: 0.09,
+        sweep: length * 0.055,
+        spanAxis: "x",
+        sign: side,
+      }),
+    );
     parts.push(transformed(fluke, (m) => m.makeTranslation(0, 0, -half * 0.92)));
   }
 
   // Pectorals: set low on the flank and drooping slightly, as they hang at rest.
   for (const side of [1, -1]) {
-    const pectoral = buildFin({
-      chordRoot: length * 0.13,
-      chordTip: length * 0.05,
-      span: pectoralSpan,
-      thickness: 0.07,
-      sweep: length * 0.05,
-      spanAxis: "x",
-      sign: side,
-    });
+    const pectoral = hardEdged(
+      buildFin({
+        chordRoot: length * 0.13,
+        chordTip: length * 0.05,
+        span: pectoralSpan,
+        thickness: 0.07,
+        sweep: length * 0.05,
+        spanAxis: "x",
+        sign: side,
+      }),
+    );
     transformed(pectoral, (m) => m.makeRotationZ(side * -0.22));
     parts.push(
       transformed(pectoral, (m) =>
@@ -131,15 +143,17 @@ function buildCetacean(options: CetaceanOptions): CreatureRig {
   }
 
   if (dorsalHeight > 0) {
-    const dorsal = buildFin({
-      chordRoot: length * 0.12,
-      chordTip: length * 0.04,
-      span: dorsalHeight,
-      thickness: 0.07,
-      sweep: length * 0.05,
-      spanAxis: "y",
-      sign: 1,
-    });
+    const dorsal = hardEdged(
+      buildFin({
+        chordRoot: length * 0.12,
+        chordTip: length * 0.04,
+        span: dorsalHeight,
+        thickness: 0.07,
+        sweep: length * 0.05,
+        spanAxis: "y",
+        sign: 1,
+      }),
+    );
     parts.push(
       transformed(dorsal, (m) => m.makeTranslation(0, height * 0.82, -length * 0.1)),
     );
@@ -207,8 +221,10 @@ const whale: SpeciesDef = {
       flukeSpan: 2.9,
       pectoralSpan: 3.4,
       dorsalHeight: 0.5,
-      beatSpeed: 1.25,
-      beatAmplitude: 0.62,
+      // Roughly one full tail stroke every ten seconds. A humpback should look
+      // like it is barely working.
+      beatSpeed: 0.6,
+      beatAmplitude: 0.66,
     });
   },
 };
@@ -230,8 +246,8 @@ const dolphin: SpeciesDef = {
       flukeSpan: 1.25,
       pectoralSpan: 1.05,
       dorsalHeight: 0.78,
-      beatSpeed: 3.1,
-      beatAmplitude: 0.3,
+      beatSpeed: 1.45,
+      beatAmplitude: 0.32,
     });
   },
 };
@@ -251,15 +267,17 @@ const manta: SpeciesDef = {
       span,
       length,
       thickness: 0.62,
-      cols: 14,
-      rows: 11,
+      // Spanwise resolution is what lets the ripple read as a curve rather
+      // than a fold, so the wings get more columns than rows.
+      cols: 26,
+      rows: 18,
     });
 
     const tail = transformed(
       buildBody({
         length: 5.4,
-        segments: 8,
-        radial: 6,
+        segments: 14,
+        radial: 10,
         radius(t) {
           // Thick where it meets the body, whipping down to nothing.
           return { x: 0.02 + t * 0.19, y: 0.02 + t * 0.19 };
@@ -278,9 +296,9 @@ const manta: SpeciesDef = {
     const swim = createSwimMaterial({
       color: 0xffffff,
       vertexColors: true,
-      amplitude: 0.92,
+      amplitude: 0.98,
       wavelength: 0.72,
-      speed: 1.55,
+      speed: 0.75,
       mode: "wing",
       nose: length / 2,
       length,
@@ -301,8 +319,8 @@ const turtle: SpeciesDef = {
   build() {
     const shell = buildBody({
       length: 5.0,
-      segments: 14,
-      radial: 12,
+      segments: 26,
+      radial: 22,
       radius(t) {
         const w = Math.sin(Math.PI * Math.pow(t, 1.1));
         return { x: 0.05 + Math.pow(w, 0.62) * 2.15, y: 0.04 + Math.pow(w, 0.7) * 0.92 };
@@ -312,8 +330,8 @@ const turtle: SpeciesDef = {
     const head = transformed(
       buildBody({
         length: 1.7,
-        segments: 7,
-        radial: 7,
+        segments: 12,
+        radial: 12,
         radius(t) {
           const w = Math.sin(Math.PI * Math.pow(t, 1.0));
           return { x: 0.05 + w * 0.36, y: 0.05 + w * 0.33 };
@@ -335,7 +353,7 @@ const turtle: SpeciesDef = {
       vertexColors: true,
       amplitude: 0.055,
       wavelength: 0.5,
-      speed: 1.5,
+      speed: 0.55,
       mode: "vertical",
       nose: 2.5,
       length: 5.0,
@@ -394,10 +412,10 @@ const turtle: SpeciesDef = {
     };
 
     // Front pair does the rowing; the back pair mostly trails and steers.
-    addFlipper(1, 1.35, 2.5, 1.15, 0, 0.62);
-    addFlipper(-1, 1.35, 2.5, 1.15, Math.PI, 0.62);
-    addFlipper(1, -1.5, 1.35, 0.8, Math.PI * 0.6, 0.26);
-    addFlipper(-1, -1.5, 1.35, 0.8, Math.PI * 1.6, 0.26);
+    addFlipper(1, 1.35, 2.5, 1.15, 0, 0.48);
+    addFlipper(-1, 1.35, 2.5, 1.15, Math.PI, 0.48);
+    addFlipper(1, -1.5, 1.35, 0.8, Math.PI * 0.6, 0.2);
+    addFlipper(-1, -1.5, 1.35, 0.8, Math.PI * 1.6, 0.2);
 
     return {
       root,
@@ -405,13 +423,15 @@ const turtle: SpeciesDef = {
         swim.setRate(rate);
         swim.setTime(elapsed);
 
-        const beat = elapsed * 1.75 * rate;
+        // Roughly one unhurried stroke every nine seconds. The earlier tempo
+        // read as paddling hard; nothing here should look like effort.
+        const beat = elapsed * 0.68 * rate;
         for (const flipper of flippers) {
           const wave = Math.sin(beat + flipper.phase);
           // Rowing, not flapping: the blade sweeps up and back, then feathers
           // on the return so it does not look like it is pushing both ways.
           flipper.pivot.rotation.z = wave * flipper.amplitude * flipper.side;
-          flipper.pivot.rotation.y = Math.cos(beat + flipper.phase) * 0.22 * flipper.side;
+          flipper.pivot.rotation.y = Math.cos(beat + flipper.phase) * 0.13 * flipper.side;
         }
       },
       dispose() {

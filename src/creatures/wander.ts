@@ -90,7 +90,7 @@ export class Wander {
       this.seed ^ SEED_PITCH,
     );
 
-    let desiredYaw = swimmer.yaw + yawNoise * 0.9;
+    let desiredYaw = swimmer.yaw + yawNoise * WANDER.meanderStrength;
     let desiredPitch = pitchNoise * WANDER.maxPitch;
 
     // --- 2. Anti-circling ----------------------------------------------------

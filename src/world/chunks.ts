@@ -9,11 +9,18 @@ const VERT_COUNT = VERTS_PER_EDGE * VERTS_PER_EDGE;
 /** Padded grid includes a one-vertex border, used for cheap normal differences. */
 const PAD_EDGE = VERTS_PER_EDGE + 2;
 
-/** How many chunks may be built in a single frame once the world is running. */
-const BUILD_BUDGET_PER_FRAME = 4;
+/**
+ * How many chunks may be built in a single frame once the world is running.
+ * Higher-resolution chunks cost more noise sampling, so this is deliberately
+ * low — a brief wait for distant terrain is invisible behind the fog, whereas
+ * a dropped frame is not.
+ */
+const BUILD_BUDGET_PER_FRAME = 2;
 
-const SAND = new THREE.Color(0xb9a97e);
-const SILT = new THREE.Color(0x7d8a6d);
+/** Floor palette, from trench bed up to sunlit reef top. */
+const DEEP_SILT = new THREE.Color(0x3a4750);
+const SILT = new THREE.Color(0x8b8e6d);
+const SAND = new THREE.Color(0xcdbb8b);
 const ROCK = new THREE.Color(0x4a5058);
 
 interface Chunk {
@@ -270,18 +277,31 @@ export class ChunkManager {
         normArray[vi * 3 + 1] = ny / len;
         normArray[vi * 3 + 2] = nz / len;
 
-        // Flats read as sand, slopes as rock, with silt between. Cheap variety
-        // that makes the floor legible without a single texture file.
+        // Elevation drives the palette: dark silt down in the trenches, sand
+        // on the open flats, brightening toward the reef tops. Slope then
+        // overrides it toward rock, because nothing settles on a wall.
         const slope = 1 - ny / len;
-        const depthFactor = THREE.MathUtils.clamp(
-          (h - (WORLD.seabedY - WORLD.terrainAmplitude)) /
-            (WORLD.terrainAmplitude * 2),
+        const elevation = THREE.MathUtils.clamp(
+          (h - (WORLD.seabedY - WORLD.colorSpanBelow)) /
+            (WORLD.colorSpanBelow + WORLD.colorSpanAbove),
           0,
           1,
         );
 
-        tint.copy(SAND).lerp(SILT, THREE.MathUtils.clamp(1 - depthFactor, 0, 1) * 0.75);
-        tint.lerp(ROCK, THREE.MathUtils.smoothstep(slope, 0.25, 0.72));
+        // The crossover sits low on the ramp deliberately: only genuine trench
+        // beds should read as dark silt, with everything from the ordinary
+        // floor upward carrying sand.
+        if (elevation < 0.34) {
+          tint
+            .copy(DEEP_SILT)
+            .lerp(SILT, THREE.MathUtils.smoothstep(elevation, 0.04, 0.34));
+        } else {
+          tint
+            .copy(SILT)
+            .lerp(SAND, THREE.MathUtils.smoothstep(elevation, 0.34, 0.78));
+        }
+
+        tint.lerp(ROCK, THREE.MathUtils.smoothstep(slope, 0.26, 0.68));
 
         colorArray[vi * 3] = tint.r;
         colorArray[vi * 3 + 1] = tint.g;

@@ -5,8 +5,8 @@
 export const WORLD = {
   /** Side length of one terrain chunk, in world units. */
   chunkSize: 64,
-  /** Quads per chunk edge. 32 -> 1089 verts per chunk, ~2m per quad. */
-  chunkRes: 32,
+  /** Quads per chunk edge. 48 -> 2401 verts per chunk, ~1.3m per quad. */
+  chunkRes: 48,
   /** Chunks kept live in each direction around the swimmer. */
   chunkRadius: 3,
   /** Water surface sits at y = 0; the seabed is carved below it. */
@@ -17,7 +17,20 @@ export const WORLD = {
   terrainAmplitude: 17,
   /** Lower = broader, lazier hills. */
   terrainFrequency: 0.0075,
-  terrainOctaves: 4,
+  terrainOctaves: 5,
+  /** How deep the winding canyons cut below the surrounding floor. */
+  trenchDepth: 34,
+  /** How high raised reef structures stand above it. */
+  moundHeight: 24,
+  /**
+   * Reference span used to colour the floor by elevation, measured from the
+   * mean seabed. Too wide and the ordinary floor lands in the middle of the
+   * ramp as uniform silt — which is dangerously close to the fog colour and
+   * makes the seabed disappear. These are sized so typical ground reads as
+   * sand, with only genuine trench beds going dark.
+   */
+  colorSpanBelow: 30,
+  colorSpanAbove: 26,
 } as const;
 
 export const WATER = {
@@ -46,26 +59,35 @@ export const WATER = {
 
 export const SWIM = {
   /** Baseline cruise speed, world units per second. */
-  cruiseSpeed: 7.2,
+  cruiseSpeed: 6.4,
   /** Fractional slow sine applied to cruise speed so it is not metronomic. */
-  speedBreathAmount: 0.15,
-  speedBreathPeriod: 11,
+  speedBreathAmount: 0.12,
+  speedBreathPeriod: 16,
   /** Maximum turn rate under player control, radians/sec. */
-  playerTurnRate: 1.15,
+  playerTurnRate: 0.95,
   /** Maximum turn rate under autopilot, radians/sec. Gentler on purpose. */
-  wanderTurnRate: 0.42,
+  wanderTurnRate: 0.34,
   /** How sharply the body rolls into a turn. */
   bankStrength: 1.5,
-  maxBank: 0.62,
+  maxBank: 0.55,
   /** Vertical bob, so it never looks rigid. */
-  bobAmount: 0.32,
-  bobPeriod: 4.3,
+  bobAmount: 0.28,
+  bobPeriod: 6.5,
   /** Never get closer than this to the seabed or the surface. */
   seabedClearance: 4.5,
   surfaceClearance: 3.0,
 } as const;
 
 export const WANDER = {
+  /**
+   * How far off the current heading the meander asks for, in radians.
+   *
+   * This interacts with `wanderTurnRate`: if the requested offset is larger
+   * than the turn rate can deliver, the animal is pinned at full lock and
+   * traces a circle. Keeping it comfortably under that ceiling is what lets it
+   * hold a course and actually cover ground.
+   */
+  meanderStrength: 0.55,
   /** Time-domain frequency of the meander noise. Lower = longer, lazier arcs. */
   yawNoiseFrequency: 0.045,
   pitchNoiseFrequency: 0.031,
@@ -77,10 +99,11 @@ export const WANDER = {
   /** Strength of the climb response when the seabed rises into the path. */
   avoidStrength: 2.6,
   /** Trail memory: how many recent positions repel, and how far they reach. */
-  trailPoints: 28,
-  trailSampleInterval: 1.6,
-  trailRadius: 95,
-  trailStrength: 0.85,
+  trailPoints: 30,
+  /** At the calmer cruise speed this is about seven minutes of memory. */
+  trailSampleInterval: 2.2,
+  trailRadius: 115,
+  trailStrength: 1.15,
   /** Curiosity: weak pull toward scenery, weak enough to read as coincidence. */
   curiosityStrength: 0.3,
   curiosityRadius: 130,

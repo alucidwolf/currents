@@ -248,9 +248,10 @@ export function applyCountershading(
   bias = 0.5,
 ): THREE.BufferGeometry {
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const normal = geometry.getAttribute("normal") as THREE.BufferAttribute | undefined;
+
   geometry.computeBoundingBox();
   const box = geometry.boundingBox!;
-
   const minY = box.min.y;
   const span = Math.max(box.max.y - minY, 1e-5);
 
@@ -259,12 +260,24 @@ export function applyCountershading(
   const mixed = new THREE.Color();
 
   const colors = new Float32Array(position.count * 3);
+
   for (let i = 0; i < position.count; i++) {
-    const t = (position.getY(i) - minY) / span;
-    // Smoothstep around the bias point gives a soft waterline rather than a
-    // hard band across the flank.
-    const k = THREE.MathUtils.smoothstep(t, bias - 0.32, bias + 0.32);
+    // Which way the surface faces is the primary signal, not how high it sits.
+    // On a flat-bodied animal like a ray, the top of the wing and its
+    // underside are at almost the same height — keyed to height alone the
+    // whole wing comes out one colour and the countershading vanishes exactly
+    // where it matters most. Facing direction separates them cleanly.
+    const facing = normal ? normal.getY(i) : 0;
+    const byNormal = THREE.MathUtils.smoothstep(facing, -0.4, 0.45);
+
+    // Height still contributes a little, so rounded bodies keep a gradient
+    // down the flank rather than a hard band where the normal flips.
+    const height = (position.getY(i) - minY) / span;
+    const byHeight = THREE.MathUtils.smoothstep(height, bias - 0.38, bias + 0.38);
+
+    const k = byNormal * 0.72 + byHeight * 0.28;
     mixed.copy(bellyColor).lerp(backColor, k);
+
     colors[i * 3] = mixed.r;
     colors[i * 3 + 1] = mixed.g;
     colors[i * 3 + 2] = mixed.b;

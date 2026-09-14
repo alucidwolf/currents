@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { SWIM, WORLD } from "../core/config";
 import { mulberry32 } from "../core/rng";
 import type { Rng } from "../core/rng";
+import { buildBody } from "../creatures/shapes";
 import type { PointOfInterest } from "../creatures/wander";
 import type { Terrain } from "./terrain";
 
@@ -43,10 +44,19 @@ interface School {
 }
 
 function buildFishGeometry(): THREE.BufferGeometry {
-  // A stretched octahedron body plus a single tail triangle. Twelve triangles
-  // total: at the range these are viewed, anything more is wasted.
-  const body = new THREE.OctahedronGeometry(1, 0);
-  body.scale(0.16, 0.2, 0.42);
+  // A proper tapered body rather than a stretched octahedron. Still tiny —
+  // ten rings of eight — but it no longer reads as a shard when a school
+  // passes close by.
+  const body = buildBody({
+    length: 1,
+    segments: 10,
+    radial: 8,
+    radius(t) {
+      const w = Math.sin(Math.PI * Math.pow(t, 1.25));
+      return { x: 0.02 + w * 0.17, y: 0.02 + w * 0.22 };
+    },
+  });
+  body.scale(1, 1, 0.85);
 
   const tail = new THREE.BufferGeometry();
   tail.setAttribute(
@@ -109,7 +119,7 @@ export class FishSchools {
 
     const material = new THREE.MeshLambertMaterial({
       color: 0xd9b26a,
-      flatShading: true,
+      flatShading: false,
       side: THREE.DoubleSide,
     });
 
@@ -226,7 +236,7 @@ export class FishSchools {
 
       for (let i = 0; i < FISH_PER_SCHOOL; i++) {
         const offset = school.offsets[i]!;
-        const wiggle = Math.sin(elapsed * 3.1 + school.phases[i]!) * 0.22;
+        const wiggle = Math.sin(elapsed * 1.5 + school.phases[i]!) * 0.2;
 
         this.position
           .copy(offset)

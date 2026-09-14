@@ -53,6 +53,20 @@ space, which means neighbouring chunks agree along their shared edges without
 any stitching. Chunks stream in ahead of you and are recycled behind, so memory
 stays flat no matter how long a session runs.
 
+**The floor is not uniform.** Six noise layers stack up. Broad basins and
+plateaus set the large shape; ordinary relief rolls over that; mid detail gives
+the eye a sense of scale and a fine ripple is the sand texture up close. Then
+two layers do the real work: *ridged* noise carved downward into winding
+trenches, and a threshold layer raising occasional reef mounds. A separate
+reef-density field decides how thickly coral and kelp grow, so the world has
+dense gardens and bare sand flats rather than an even sprinkle everywhere.
+
+**There are wrecks.** Roughly one per quarter square kilometre, a ship lies
+broken in two on the seabed, its halves settled at different angles with a gap
+of open sand between them. They are deliberately rare — an endlessly generated
+world where everywhere is equally interesting ends up feeling like nowhere is.
+The autopilot rates them above coral and fish as somewhere to drift past.
+
 **Nothing simulates water.** The sense of being underwater comes from five
 cheap effects sharing one slowly rotating current vector: depth-tinted
 exponential fog, procedural caustics on the seabed, kelp that leans on the
@@ -62,7 +76,12 @@ water is moving.
 
 **Nothing is rigged.** Each animal's body is deformed by a travelling sine wave
 injected into the vertex shader, weighted so the nose barely moves and the tail
-moves most. Four animals with distinct swimming styles, no bones, no skinning.
+moves most, with vertex normals rotated analytically to match the bend. Four
+animals with distinct swimming styles, no bones, no skinning.
+
+**Bodies are countershaded** — dark above, pale below — via a baked colour
+attribute keyed to which way each surface faces. That keeps them readable from
+any angle instead of collapsing into silhouette against open water.
 
 **Draw calls stay flat.** All of a chunk's coral, rock and kelp merge into a
 single geometry, so a whole reef is one draw call; every fish in the world
