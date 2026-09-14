@@ -1,7 +1,10 @@
 import * as THREE from "three";
 import { SWIM, WANDER, WORLD } from "../core/config";
+import { mulberry32, randRange } from "../core/rng";
+import type { Rng } from "../core/rng";
 import { fbm1Signed } from "../world/noise";
 import type { Terrain } from "../world/terrain";
+import { angleDelta } from "./swimmer";
 import type { SteerCommand, Swimmer } from "./swimmer";
 
 /** Somewhere worth drifting past. Supplied by the world once scenery exists. */
@@ -21,6 +24,7 @@ export type PoiProvider = (
 
 const SEED_YAW = 0x51ed270b;
 const SEED_PITCH = 0x1b873593;
+const SEED_COURSE = 0x2f8b4a17;
 
 /** How close counts as "seen it", after which curiosity moves on. */
 const POI_ARRIVAL_RADIUS = 22;
@@ -36,18 +40,46 @@ const POI_MEMORY_SECONDS = 420;
  *
  * Four influences combine each frame:
  *
- *   1. Meander       smooth noise, for organic curves rather than straight lines
+ *   1. Course        a held heading, changed now and then by a decided turn
  *   2. Anti-circling repulsion from where it has recently been
  *   3. Avoidance     terrain and surface, steering early and gently
  *   4. Curiosity     a weak pull toward scenery worth passing
  *
  * Only avoidance is allowed to be assertive. The rest are nudges, because the
  * whole point is that nothing ever looks urgent.
+ *
+ * ## Why the heading is held rather than wandered
+ *
+ * The obvious way to write a meander is to offset the *current* heading by
+ * smooth noise. It is also wrong, and subtly enough that it survived a long
+ * time here: an offset from the current heading is a turn-*rate* command, not a
+ * heading. However gentle the noise looks, the animal keeps turning for as long
+ * as the offset keeps its sign — and smooth noise holds a sign for tens of
+ * seconds. Watched for a while, the animal curved one way for the better part
+ * of a minute, then the other way for about as long.
+ *
+ * Nothing that measures where it went catches this. Ground covered, distance
+ * travelled and time spent loitering were all healthy, because a long sweeping
+ * arc crosses plenty of fresh water. What it fails is the thing you actually
+ * notice, which is the shape of the path.
+ *
+ * So the animal holds a definite course and departs from it deliberately. Noise
+ * only supplies a small wobble on top, far too small to read as a turn. Real
+ * turns are discrete decisions, mostly slight, occasionally sharp, and their
+ * direction leans against however the animal has lately been turning — so a run
+ * of same-way turns cannot build into the very thing this replaced.
  */
 export class Wander {
   private readonly trail: THREE.Vector3[] = [];
   private trailWrite = 0;
   private trailTimer = 0;
+
+  /** The held heading. NaN until the first update adopts the animal's own. */
+  private courseYaw = Number.NaN;
+  private courseHold = 0;
+  /** Recent net turning, decayed. Leans the next turn the other way. */
+  private turnBalance = 0;
+  private readonly rng: Rng;
 
   private readonly visited = new Map<string, number>();
   private target: PointOfInterest | null = null;
@@ -63,7 +95,11 @@ export class Wander {
   constructor(
     private readonly terrain: Terrain,
     private readonly seed: number,
-  ) {}
+  ) {
+    // Seeded from the world, so the same ocean produces the same drift and a
+    // reported path can be reproduced.
+    this.rng = mulberry32(seed ^ SEED_COURSE);
+  }
 
   setPoiProvider(provider: PoiProvider | null): void {
     this.poiProvider = provider;
@@ -80,24 +116,42 @@ export class Wander {
     this.recordTrail(dt, swimmer.position);
     this.expireMemory(elapsed);
 
-    // --- 1. Meander ----------------------------------------------------------
-    // A heading *offset* rather than an absolute target: noise near zero means
-    // hold course, noise at the extremes means a long lazy arc. The turn-rate
-    // limiter downstream turns this into a curve rather than a swerve.
-    const yawNoise = fbm1Signed(elapsed * WANDER.yawNoiseFrequency, this.seed ^ SEED_YAW);
+    // --- 1. Course -----------------------------------------------------------
+    if (Number.isNaN(this.courseYaw)) {
+      this.courseYaw = swimmer.yaw;
+      this.courseHold = randRange(this.rng, WANDER.courseHoldMin, WANDER.courseHoldMax);
+    }
+
+    // Only the recent past should lean the next turn; an hour ago is not a
+    // reason to turn left now.
+    this.turnBalance *= Math.exp(-dt / WANDER.balanceMemory);
+
+    this.courseHold -= dt;
+
     const pitchNoise = fbm1Signed(
       elapsed * WANDER.pitchNoiseFrequency,
       this.seed ^ SEED_PITCH,
     );
 
-    let desiredYaw = swimmer.yaw + yawNoise * WANDER.meanderStrength;
-    let desiredPitch = pitchNoise * WANDER.maxPitch;
+    // Small enough to read as drift rather than as steering. This is the one
+    // place noise still touches the heading, and the reason it is safe here is
+    // that it modulates a course that is otherwise standing still.
+    const wobble =
+      fbm1Signed(elapsed * WANDER.wobbleFrequency, this.seed ^ SEED_YAW) *
+      WANDER.wobbleStrength;
 
     // --- 2. Anti-circling ----------------------------------------------------
-    // Noise steering, left alone, random-walks into orbits over the same few
-    // hundred square metres. Pushing away from the recent trail is what turns
-    // that orbit back into exploration.
+    // Left alone, steering that is only ever reactive random-walks into orbits
+    // over the same few hundred square metres. Pushing away from the recent
+    // trail is what turns that orbit back into exploration — and at the moment
+    // of choosing a new course, it also decides which way is worth going.
     this.computeRepulsion(swimmer.position);
+
+    if (this.courseHold <= 0) this.commitTurn();
+
+    let desiredYaw = this.courseYaw + wobble;
+    let desiredPitch = pitchNoise * WANDER.maxPitch;
+
     if (this.repulsion.lengthSq() > 1e-6) {
       this.desired.set(Math.sin(desiredYaw), 0, Math.cos(desiredYaw));
       this.desired.addScaledVector(this.repulsion, WANDER.trailStrength);
@@ -135,6 +189,53 @@ export class Wander {
   }
 
   // -- internals -------------------------------------------------------------
+
+  /**
+   * Decide on a new course and how long to hold it.
+   *
+   * Three things shape the choice. Size comes from a weighted set of bands, so
+   * most changes are slight and a few are sharp — a constant fidget and a
+   * straight line are both dull, and the mix is what is not. Direction leans
+   * against however the animal has lately been turning, which is what stops a
+   * run of same-way turns quietly reassembling the long one-way curve this
+   * whole approach exists to avoid. And it leans again toward open water,
+   * because the trail already knows where has just been swum.
+   */
+  private commitTurn(): void {
+    const rng = this.rng;
+
+    let roll = rng();
+    // Annotated, because the config is `as const` and the last band's max would
+    // otherwise narrow this to a literal type.
+    let magnitude: number = WANDER.turnBands[WANDER.turnBands.length - 1]!.max;
+    for (const band of WANDER.turnBands) {
+      if (roll < band.share) {
+        magnitude = randRange(rng, band.min, band.max);
+        break;
+      }
+      roll -= band.share;
+    }
+
+    // Positive balance means it has been turning right, so lean left.
+    const lean = THREE.MathUtils.clamp(this.turnBalance / WANDER.balanceSpan, -1, 1);
+    let chanceOfRight = 0.5 - lean * 0.45;
+
+    if (this.repulsion.lengthSq() > 1e-6) {
+      const away = Math.atan2(this.repulsion.x, this.repulsion.z);
+      chanceOfRight += Math.sign(angleDelta(this.courseYaw, away)) * 0.22;
+    }
+
+    const sign = rng() < THREE.MathUtils.clamp(chanceOfRight, 0.05, 0.95) ? 1 : -1;
+    const turn = magnitude * sign;
+
+    this.courseYaw += turn;
+    this.turnBalance += turn;
+
+    // A bigger turn earns a longer settle on the far side of it, so a sharp
+    // change reads as a decision rather than as part of a weave.
+    this.courseHold =
+      randRange(rng, WANDER.courseHoldMin, WANDER.courseHoldMax) * (1 + magnitude * 0.35);
+  }
 
   private recordTrail(dt: number, position: THREE.Vector3): void {
     this.trailTimer += dt;

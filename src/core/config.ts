@@ -166,16 +166,46 @@ export const SWIM = {
 
 export const WANDER = {
   /**
-   * How far off the current heading the meander asks for, in radians.
+   * Subtle wobble around the held course, in radians, and how fast it varies.
    *
-   * This interacts with `wanderTurnRate`: if the requested offset is larger
-   * than the turn rate can deliver, the animal is pinned at full lock and
-   * traces a circle. Keeping it comfortably under that ceiling is what lets it
-   * hold a course and actually cover ground.
+   * This is the only *continuous* steering input. It has to stay small: a
+   * wandering offset applied to the current heading is a turn-rate command, not
+   * a heading, so any lasting offset keeps the animal turning for as long as it
+   * lasts. That is what made a watched animal curve one way for the best part
+   * of a minute at a time. Here the offset is applied to a course that holds
+   * still, so it reads as drift rather than as a turn.
    */
-  meanderStrength: 0.55,
-  /** Time-domain frequency of the meander noise. Lower = longer, lazier arcs. */
-  yawNoiseFrequency: 0.045,
+  wobbleStrength: 0.14,
+  wobbleFrequency: 0.05,
+  /**
+   * Seconds a course is held before the animal commits to a new one.
+   *
+   * Long, because the whole point is to travel somewhere rather than mill
+   * about. A bigger turn extends its own settling time on top of this.
+   */
+  courseHoldMin: 13,
+  courseHoldMax: 38,
+  /**
+   * Sizes of a committed course change, in radians, and how often each occurs.
+   *
+   * Mostly small adjustments, with the occasional decisive turn — that mix is
+   * what makes a long unattended watch interesting, rather than either a
+   * straight line or a constant fidget.
+   */
+  turnBands: [
+    { share: 0.5, min: 0.12, max: 0.45 },
+    { share: 0.32, min: 0.45, max: 1.05 },
+    { share: 0.18, min: 1.05, max: 2.1 },
+  ],
+  /**
+   * Radians of recent net turning at which the next turn's direction is fully
+   * biased the other way, and how long that memory takes to fade.
+   *
+   * Without it nothing stops a run of same-way turns, and a run of those is
+   * indistinguishable from the bug this replaced.
+   */
+  balanceSpan: 2.6,
+  balanceMemory: 150,
   pitchNoiseFrequency: 0.031,
   /** Pitch authority is deliberately weaker than yaw: mostly level cruising. */
   maxPitch: 0.34,

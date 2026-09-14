@@ -221,14 +221,37 @@ Left alone, the animal is always under autopilot — holding the right mouse
 button or an arrow key suppresses it, releasing restores it. Four influences
 combine:
 
-1. **Meander** — smooth noise, for organic curves instead of straight lines.
+1. **Course** — a definite heading, held, and changed now and then by a decided
+   turn. Mostly slight, occasionally sharp.
 2. **Anti-circling** — a fading memory of recent positions pushes it away from
-   where it has just been. Noise steering alone drifts into lazy orbits over
-   one patch of seabed; this is what turns orbiting back into exploring.
+   where it has just been, and at the moment it picks a new course, tells it
+   which way is unexplored.
 3. **Avoidance** — it reads the seabed ahead and arcs over ridges early, rather
    than pulling up at the last metre.
 4. **Curiosity** — a weak pull toward coral and fish schools, so it drifts past
    scenery rather than empty water.
+
+**The course is held rather than wandered, and that distinction is the whole
+thing.** The obvious way to write a meander is to offset the *current* heading
+by smooth noise, which is what this did for a long time. It is wrong in a way
+that is easy to miss: an offset from the current heading is a turn-*rate*
+command, not a heading, so the animal keeps turning for as long as the noise
+keeps its sign — and smooth noise holds a sign for tens of seconds. Watched for
+a while, it curved one way for most of a minute, then the other way for about
+as long.
+
+Nothing that measures *where it went* catches that. Ground covered, distance
+travelled and time spent loitering were all healthy, because a long sweeping arc
+crosses plenty of fresh water. What it fails is the thing you actually notice,
+which is the shape of the path. So the check now also measures turning itself:
+what share of it went one way, and the longest unbroken stretch spent turning in
+one direction. Replacing the noise meander with a held course cut that stretch
+from 11–15 seconds to 4–7, and roughly doubled how far from home twenty minutes
+gets — the worst case went from 930 metres to 4.7 kilometres.
+
+Turn direction leans against however the animal has lately been turning, with a
+memory that fades over a couple of minutes. Without that, a run of same-way
+turns quietly reassembles the very thing the held course was meant to prevent.
 
 That behaviour only reveals itself over tens of minutes, which is impractical to
 verify by watching. `npm run verify:wander` simulates it headlessly instead —

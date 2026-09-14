@@ -33,6 +33,19 @@ interface Result {
   surfaceBreaches: number;
   maxRevisitDwell: number;
   stalledFrames: number;
+  /**
+   * Signed turning divided by total turning, in [-1, 1].
+   *
+   * Zero means left and right balance out; ±1 means every degree of turning
+   * went the same way. This is the number that catches "it just kept curving
+   * right" — a path can cover plenty of fresh ground while doing it, so
+   * coverage and displacement both pass and say nothing about it.
+   */
+  turnBias: number;
+  /** Longest unbroken stretch spent turning one way, in seconds. */
+  longestOneWay: number;
+  /** Share of the twelve compass sectors the heading ever pointed into. */
+  headingCoverage: number;
 }
 
 const DT = 1 / 60;
@@ -72,12 +85,50 @@ function simulate(seed: number, minutes: number, turnScale: number, label: strin
   let cellEntered = 0;
   let maxRevisitDwell = 0;
 
+  let signedTurn = 0;
+  let absoluteTurn = 0;
+  let oneWaySince = 0;
+  let oneWaySign = 0;
+  let longestOneWay = 0;
+  let prevYaw = swimmer.yaw;
+  const sectors = new Set<number>();
+
+  /**
+   * Below this rate, in radians per second, the animal is holding course.
+   *
+   * Set above the drift the course wobble produces on its own — roughly
+   * 0.04 rad/s, or a bit over two degrees a second, which is not something a
+   * viewer would call turning. Any lower and this measures the wobble's own
+   * period instead of the thing it is meant to catch.
+   */
+  const TURN_DEADBAND = 0.06;
+
   for (let i = 0; i < steps; i++) {
     elapsed += DT;
 
     const command = wander.update(DT, elapsed, swimmer);
     command.turnRate *= turnScale;
     swimmer.update(DT, elapsed, command);
+
+    let dYaw = swimmer.yaw - prevYaw;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    prevYaw = swimmer.yaw;
+
+    signedTurn += dYaw;
+    absoluteTurn += Math.abs(dYaw);
+
+    const rate = dYaw / DT;
+    const sign = rate > TURN_DEADBAND ? 1 : rate < -TURN_DEADBAND ? -1 : 0;
+    if (sign !== oneWaySign) {
+      if (oneWaySign !== 0) {
+        longestOneWay = Math.max(longestOneWay, elapsed - oneWaySince);
+      }
+      oneWaySign = sign;
+      oneWaySince = elapsed;
+    }
+
+    sectors.add(Math.floor(((swimmer.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) / (Math.PI / 6)));
 
     const { x, y, z } = swimmer.position;
 
@@ -110,8 +161,12 @@ function simulate(seed: number, minutes: number, turnScale: number, label: strin
   }
 
   maxRevisitDwell = Math.max(maxRevisitDwell, elapsed - cellEntered);
+  if (oneWaySign !== 0) longestOneWay = Math.max(longestOneWay, elapsed - oneWaySince);
 
   return {
+    turnBias: absoluteTurn > 1e-6 ? signedTurn / absoluteTurn : 0,
+    longestOneWay,
+    headingCoverage: sectors.size / 12,
     seed,
     species: label,
     minutes,
@@ -153,8 +208,10 @@ console.log(
     "spanZ".padStart(8),
     "net".padStart(8),
     "minClear".padStart(9),
-    "clamped".padStart(8),
     "dwell".padStart(7),
+    "bias".padStart(7),
+    "oneWay".padStart(8),
+    "compass".padStart(8),
   ].join(" "),
 );
 
@@ -170,8 +227,10 @@ for (const r of results) {
       r.spanZ.toFixed(0).padStart(8),
       r.netDisplacement.toFixed(0).padStart(8),
       r.minClearance.toFixed(2).padStart(9),
-      String(r.clampedFrames).padStart(8),
       `${r.maxRevisitDwell.toFixed(0)}s`.padStart(7),
+      r.turnBias.toFixed(2).padStart(7),
+      `${r.longestOneWay.toFixed(0)}s`.padStart(8),
+      `${(r.headingCoverage * 100).toFixed(0)}%`.padStart(8),
     ].join(" "),
   );
 }
@@ -191,6 +250,31 @@ for (const r of results) {
     `${prefix} never stalls`,
     r.stalledFrames === 0,
     `${r.stalledFrames} frames with no movement`,
+  );
+
+  // Turning that never balances is what makes a long watch feel like one slow
+  // curve in a single direction. Coverage and displacement are both blind to
+  // it: a wide right-hand arc crosses plenty of fresh ground.
+  check(
+    `${prefix} turns both ways`,
+    Math.abs(r.turnBias) < 0.25,
+    `${(r.turnBias * 100).toFixed(0)}% of all turning went ${r.turnBias > 0 ? "right" : "left"}`,
+  );
+
+  check(
+    `${prefix} does not curve one way for minutes`,
+    r.longestOneWay < 30,
+    `turned the same way for ${r.longestOneWay.toFixed(0)}s without a break`,
+  );
+
+  // A floor, not a demand for even coverage. Heading spread trades directly
+  // against getting anywhere: an animal that commits to a direction for a while
+  // travels much further than one that samples the whole compass, and going
+  // somewhere is the point. This catches a heading that is genuinely stuck.
+  check(
+    `${prefix} is not locked to one heading`,
+    r.headingCoverage >= 0.5,
+    `only reached ${(r.headingCoverage * 12).toFixed(0)} of 12 compass sectors`,
   );
 
   check(
