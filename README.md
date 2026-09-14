@@ -155,6 +155,32 @@ current, drifting particulate, and a shimmering surface overhead. Because they
 all read the same vector, everything loose in view agrees about which way the
 water is moving.
 
+**The ceiling and the distance are different things.** They did not used to be:
+`scene.background` can only hold one colour and fog fades everything toward one
+colour, so the surface above and the emptiness ahead were literally the same
+pixels and the horizon had no position. Two things separate them now.
+
+The open water is a vertical gradient on a large sphere rather than a flat tint.
+It passes exactly through the fog colour at eye level, so distance still
+dissolves into it with no seam, and departs from it above and below — which is
+what gives the horizon somewhere to be.
+
+The surface uses **Snell's window**. Underwater the ceiling is not one even
+sheet: past about 48° from vertical the water total-internally reflects, so it
+stops being a window onto the sky and becomes a mirror showing the depths back
+at you. That bright disc overhead falling away to a dark mirrored lid is the
+thing that reads as *a surface* rather than as more distance. The ripple is
+applied to the angle rather than to the colour, so the edge of the window breaks
+into moving scallops the way it actually does.
+
+The surface also fades out with distance instead of ending. Any finite plane
+that simply stops draws a line across the view where it does — the camera's far
+plane cuts this one long before its own edge, and the graded water showing past
+the cut is not the colour the fog has faded the ceiling to, so the two do not
+meet. Fading it well inside the clip distance leaves no edge to see, and it is
+what the surface does anyway: a bright lid overhead, lost in the murk toward the
+horizon.
+
 **Nothing is rigged.** Each animal's body is deformed by a travelling sine wave
 injected into the vertex shader, weighted so the nose barely moves and the tail
 moves most, with vertex normals rotated analytically to match the bend. Four

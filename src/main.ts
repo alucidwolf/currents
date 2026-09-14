@@ -307,6 +307,11 @@ if (import.meta.env.DEV) {
     chunks,
     rig,
     current,
+    // The renderer and the diorama pass are here so a frame can be forced on
+    // demand. The loop stops when the window is not being composited, which is
+    // exactly when you most want to pose the camera and look at one frame.
+    renderer,
+    diorama,
   };
 }
 

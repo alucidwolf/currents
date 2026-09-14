@@ -62,6 +62,39 @@ export const WATER = {
   /** Hemisphere light's downward colour. Too dark here and flanks go black. */
   groundColor: 0x2a5f77,
   /**
+   * Snell's window: the bright disc of sky you see looking straight up.
+   *
+   * Underwater the surface is not one even sheet. Past about 48 degrees from
+   * vertical the water total-internally reflects, so the ceiling stops being a
+   * window and becomes a mirror showing the dark depths back at you. That is
+   * what separates "the surface" from "the distance" to the eye — without it
+   * both are the same pale wash and the ceiling has no edge anywhere.
+   */
+  surfaceGlow: 0xf2fdff,
+  /** What the mirrored part of the ceiling shows: the water below it. */
+  surfaceMirror: 0x1d5f83,
+  /** Cosine of the critical angle. Water to air is 1/1.333, so about 48.6°. */
+  surfaceCritical: 0.661,
+  /**
+   * Where the ceiling starts and finishes dissolving, in metres from the eye.
+   *
+   * Both must sit comfortably inside the camera's far plane. The surface is a
+   * finite plane, and one that simply stops draws a line across the view where
+   * it does — the far clip cuts it long before its own edge, and the graded
+   * water beyond the cut is not the colour the fog faded the ceiling to.
+   */
+  surfaceFadeNear: 110,
+  surfaceFadeFar: 250,
+  /**
+   * The open water itself, as a vertical gradient rather than one flat colour.
+   *
+   * At eye level this matches the fog exactly, so distance dissolves into it
+   * with no seam; above and below it departs, which is what gives the horizon a
+   * position instead of leaving the whole view one continuous tint.
+   */
+  horizonLift: 0.42,
+  horizonSink: 0.5,
+  /**
    * Neutral, faintly cool. A warm sun was the hidden cause of the muddiness:
    * warm key light against cyan ambient lands on opposite sides of the wheel,
    * and the two average out to grey across every surface in the scene.
