@@ -82,6 +82,15 @@ export const WATER = {
   /** Counter-light so side-on surfaces are not silhouettes. */
   fillColor: 0x62b6cd,
   fillIntensity: 0.22,
+  /**
+   * The animal's shadow. Only it casts, so the map covers a small area around
+   * the swimmer and travels with it — a frustum wide enough for the whole draw
+   * distance would spread these texels far too thin to read as anything.
+   */
+  shadowMapSize: 1024,
+  /** Half-width of the shadow frustum, in metres. Must clear the largest animal. */
+  shadowExtent: 26,
+  shadowSoftness: 4,
 } as const;
 
 export const SWIM = {
@@ -164,7 +173,13 @@ export const CAMERA = {
   maxDistance: 52,
   /** Starting orbit offset, radians. Yaw is relative to the swimmer's heading. */
   startYaw: Math.PI,
-  startPitch: 0.26,
+  /**
+   * Raised a little from level. Looking down at the scene rather than across it
+   * is part of what makes it read as a model of a place — the reference look
+   * takes that much further with a fixed isometric view, which is not open to a
+   * game about following an animal, but the angle still helps.
+   */
+  startPitch: 0.34,
   minPitch: -1.1,
   maxPitch: 1.25,
   /** Mouse sensitivity for left-drag orbiting. */
@@ -175,6 +190,48 @@ export const CAMERA = {
   idleDelay: 20,
   idleDriftSpeed: 0.035,
   idleEnabled: true,
+} as const;
+
+/**
+ * The diorama look: shallow focus, a warm/cool split, and a vignette.
+ *
+ * Chunky low-poly forms under soft light read as a *model* of a world rather
+ * than a world, and it is shallow depth of field that tells the eye how big to
+ * think the scene is — the same trick that makes a tilt-shift photograph of a
+ * real street look like a toy. Everything here is in metres of scene depth or
+ * in linear colour, not in arbitrary units.
+ */
+export const DIORAMA = {
+  /**
+   * Blur reach in half-resolution pixels. The blur runs on a half-size copy,
+   * so its effect on screen is twice this.
+   */
+  blurRadius: 1.4,
+  /** Metres either side of the animal that stay fully sharp. */
+  focusRange: 7,
+  /**
+   * Metres beyond that to reach maximum blur.
+   *
+   * Asymmetric on purpose: foreground water going soft quickly is most of the
+   * toy-model effect, while distance is approached gently so the reef does not
+   * dissolve the moment you stop swimming at it.
+   */
+  nearFalloff: 13,
+  farFalloff: 85,
+  /** Ceilings on each, so distance stays readable rather than becoming a smear. */
+  maxNearBlur: 1,
+  maxFarBlur: 0.8,
+  /**
+   * Split tone, added after lighting. A warm key light against this scene's
+   * cool ambient averages to grey on every surface — that is how the palette
+   * went muddy once before. Applied as a grade, the two pull apart instead.
+   */
+  warmHighlights: [0.055, 0.03, -0.014],
+  coolShadows: [-0.018, 0.004, 0.032],
+  /** Slightly above 1: the reference look is colourful, not merely bright. */
+  saturation: 1.12,
+  /** How far the corners fall off. Frames the scene as an object. */
+  vignette: 0.32,
 } as const;
 
 export const RENDER = {

@@ -11,6 +11,7 @@ import type { SteerCommand } from "./creatures/swimmer";
 import { Wander } from "./creatures/wander";
 import { SPECIES, speciesById } from "./creatures/species";
 import type { CreatureRig, SpeciesDef } from "./creatures/species";
+import { Diorama } from "./render/diorama";
 import { makeCausticTerrainMaterial } from "./world/caustics";
 import { ChunkManager } from "./world/chunks";
 import { Current } from "./world/current";
@@ -37,7 +38,17 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
+// One soft shadow, cast by the animal alone onto whatever is under it. Objects
+// that cast nothing float, however well they are lit — and a shadow tracking
+// across the seabed is most of what makes a big animal feel like it has weight.
+// Confined to the animal because the reef is the expensive half of the scene
+// and gains far less from it.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
 const scene = new THREE.Scene();
+const diorama = new Diorama(renderer);
+diorama.setSize(window.innerWidth, window.innerHeight, renderer.getPixelRatio());
 
 // -- world -------------------------------------------------------------------
 
@@ -92,6 +103,15 @@ function adoptSpecies(chosen: SpeciesDef): void {
 
   species = chosen;
   creature = chosen.build();
+
+  // The animal is the only thing in the world that casts a shadow, and it is
+  // set here rather than inside each species because the species do not all
+  // build the same way — a turtle is a shell plus four separately pivoted
+  // flippers, so anything set once per rig would quietly miss most of it.
+  creature.root.traverse((node) => {
+    node.castShadow = true;
+  });
+
   swimmer.object.add(creature.root);
   rig.setPreferredDistance(chosen.viewDistance);
 }
@@ -216,7 +236,29 @@ const loop = createLoop((dt, elapsed) => {
   // Drag and wheel are accumulators; the camera has now had its look at them.
   input.consume();
 
-  renderer.render(scene, rig.camera);
+  if (dioramaOn) {
+    // Focus on the animal, so it stays crisp wherever the camera is orbiting
+    // and the water in front and the reef behind are what go soft.
+    diorama.render(scene, rig.camera, rig.camera.position.distanceTo(swimmer.position));
+  } else {
+    renderer.setRenderTarget(null);
+    renderer.render(scene, rig.camera);
+  }
+});
+
+/**
+ * P toggles the diorama pass.
+ *
+ * Two reasons to keep it. It is the one part of the renderer with a cost that
+ * scales with screen area rather than with what is in the scene, so it is the
+ * first thing to turn off on a machine that is struggling. And the effect is
+ * strong enough that the only honest way to judge it is to flick it off and
+ * back on against the same view.
+ */
+let dioramaOn = true;
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "p" && event.key !== "P") return;
+  dioramaOn = !dioramaOn;
 });
 
 // -- lifecycle ---------------------------------------------------------------
@@ -224,6 +266,7 @@ const loop = createLoop((dt, elapsed) => {
 window.addEventListener("resize", () => {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  diorama.setSize(window.innerWidth, window.innerHeight, renderer.getPixelRatio());
   rig.resize(window.innerWidth / window.innerHeight);
 });
 

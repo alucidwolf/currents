@@ -43,6 +43,23 @@ export class Water {
     // would swing round to shine sideways once the swimmer is a few hundred
     // metres out. Both ends travel with the swimmer so the direction is fixed.
     this.sun = new THREE.DirectionalLight(WATER.sunColor, WATER.sunIntensity);
+    // A single tight shadow frustum, kept small because it travels with the
+    // swimmer and never has to cover more than the animal's own surroundings.
+    // A wide one would spread the same texels over hundreds of metres and turn
+    // the shadow to mush.
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(WATER.shadowMapSize, WATER.shadowMapSize);
+    const frustum = this.sun.shadow.camera;
+    frustum.left = -WATER.shadowExtent;
+    frustum.right = WATER.shadowExtent;
+    frustum.top = WATER.shadowExtent;
+    frustum.bottom = -WATER.shadowExtent;
+    frustum.near = 1;
+    frustum.far = 220;
+    // Softens the contact edge and hides the seam where the shadow of an
+    // animated body disagrees slightly with the body itself.
+    this.sun.shadow.radius = WATER.shadowSoftness;
+    this.sun.shadow.bias = -0.0022;
     scene.add(this.sun);
     scene.add(this.sun.target);
 

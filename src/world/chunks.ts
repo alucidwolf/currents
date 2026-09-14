@@ -208,6 +208,10 @@ export class ChunkManager {
 
     const mesh = new THREE.Mesh(geometry, this.material);
     mesh.position.set(originX, 0, originZ);
+    // Receives the animal's shadow; casts nothing itself, because the seabed's
+    // own relief is already described by the lighting and a second depth pass
+    // over every chunk is the most expensive thing we could ask for here.
+    mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
 
@@ -230,6 +234,7 @@ export class ChunkManager {
 
     const decor = new THREE.Mesh(built.geometry, this.decorMaterial);
     decor.position.set(chunk.cx * WORLD.chunkSize, 0, chunk.cz * WORLD.chunkSize);
+    decor.receiveShadow = true;
     decor.matrixAutoUpdate = false;
     decor.updateMatrix();
 

@@ -34,6 +34,7 @@ npm run dev      # http://127.0.0.1:5173
 | **Arrow keys** | Steer without the mouse — left and right turn, up and down climb and dive. Speed never changes; the keys only change where the animal is pointing. Let go and it levels off and goes back to wandering. |
 | **H** | Toggle the control hints. |
 | **F** | Toggle the stats overlay (fps, draw calls, chunk count, depth). |
+| **P** | Toggle the diorama pass — depth of field, grade and vignette — to compare, or to claw back frame time. |
 
 The hints fade out on their own after a few seconds of stillness and come back
 when you move the mouse.
@@ -61,6 +62,26 @@ Fragments combine: `#seed=reef7&species=manta`.
 Smooth stylised, not faceted low-poly. Simple rounded forms, smooth shading,
 and **bright saturated colour** — detail comes from silhouette and clean colour
 blocking rather than from surface texture or polygon count.
+
+**The target is a cosy tabletop diorama**, after TUNIC. The thing that produces
+that reading is not the models — chunky low-poly forms on their own just look
+like chunky low-poly forms — it is a **shallow depth of field**, the same trick
+that makes a tilt-shift photograph of a real street look like a toy. Focus
+follows the animal, so it stays crisp wherever the camera orbits while the water
+in front and the reef behind go soft. Underwater that is also the honest thing
+to do, since scattering really does soften distance.
+
+Three things support it. The animal casts a single soft shadow onto whatever is
+beneath it — anything that casts nothing floats, however well it is lit, and a
+shadow tracking across the seabed is most of what gives a large animal weight.
+A warm-highlight, cool-shadow split tone runs as a grade rather than as a warm
+key light, because a warm lamp against this scene's cool ambient averages to
+grey on every surface; applied after lighting the two pull apart instead. And
+the corners fall off, which frames the view as an object being looked at.
+
+The camera sits a little above level for the same reason. The reference takes
+this much further with a fixed isometric view, which is not open to a game about
+following an animal, but the angle still helps.
 
 Two rules earned the hard way:
 
@@ -213,13 +234,21 @@ the streaming budget ever has to absorb.
 
 ## Performance
 
-Pixel ratio is capped at 1.5, there are no shadow maps and no post-processing,
-draw distance is bounded by the fog, and rendering suspends entirely while the
-tab is hidden.
+Pixel ratio is capped at 1.5, draw distance is bounded by the fog, and rendering
+suspends entirely while the tab is hidden. There is one shadow map, cast by the
+animal alone into a small frustum that travels with it, and one post-processing
+chain whose expensive pass runs at half resolution.
 
-Measured on a 100Hz display while actively streaming terrain: **every frame in
-a 25-second window hit vsync**, worst frame 10.3ms, with ~480k triangles across
-~67 draw calls and a flat heap.
+Measured on a 100Hz display while actively streaming terrain, *before* the
+diorama pass and its shadow existed: **every frame in a 25-second window hit
+vsync**, worst frame 10.3ms, with ~480k triangles across ~67 draw calls and a
+flat heap. Decor has since got about three times lighter, and the diorama pass
+adds three fullscreen draws — two of them at quarter the pixels — plus a
+1024² depth render of one animal. That has not been re-measured.
+
+Press **P** to toggle the diorama pass. It is the only part of the renderer
+whose cost scales with screen area rather than with what is in the scene, so it
+is the first thing to turn off on a machine that is struggling.
 
 Getting there took two rounds of measurement, and the first assumption was
 wrong. Chunk streaming was the only source of dropped frames, but not for the
@@ -253,6 +282,7 @@ src/
   core/        seeded RNG, frame loop, and every tunable in config.ts
   control/     pointer input, camera rig
   creatures/   body construction, swim shader, the player animal, the autopilot
+  render/      the diorama pass: depth of field, grade, vignette
   world/       terrain, chunk streaming, decor, water, caustics, fish, motes
   ui/          start screen and HUD
 tools/         headless wander verification
