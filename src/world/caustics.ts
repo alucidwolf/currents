@@ -40,7 +40,9 @@ const FRAGMENT_DECL = /* glsl */ `
     v += sin( ( a.x + a.y ) * 0.90 - t * 1.05 ) * 0.70;
     v += sin( length( a ) * 1.70 + t * 0.45 ) * 0.50;
     v = v / 2.2 * 0.5 + 0.5;
-    return pow( clamp( v, 0.0, 1.0 ), 3.5 );
+    // A slightly softer power than before: the target look is broad bright
+    // ribbons rolling across the sand, not a fine sparkle.
+    return pow( clamp( v, 0.0, 1.0 ), 2.8 );
   }
 `;
 
@@ -70,8 +72,8 @@ export function makeCausticTerrainMaterial(): CausticMaterial {
 
   const uniforms = {
     uCausticTime: { value: 0 },
-    uCausticStrength: { value: 0.6 },
-    uCausticColor: { value: new THREE.Color(0xa8e8ff) },
+    uCausticStrength: { value: 0.95 },
+    uCausticColor: { value: new THREE.Color(0xd6f6ff) },
   };
 
   material.onBeforeCompile = (shader) => {

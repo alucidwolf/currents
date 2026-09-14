@@ -67,11 +67,14 @@ export class LightShafts {
   private readonly shafts: Array<{ mesh: THREE.Mesh; offset: THREE.Vector2; spin: number }> =
     [];
   private readonly uniforms = {
-    uColor: { value: new THREE.Color(0xbfe9ff) },
-    uOpacity: { value: 0.3 },
+    uColor: { value: new THREE.Color(0xdcf7ff) },
+    // Additive, and they stack — a handful seen broadside will wash the whole
+    // frame toward white if this is generous. They should read as distinct
+    // beams, not as a general glow.
+    uOpacity: { value: 0.26 },
     uTime: { value: 0 },
-    uFadeStart: { value: 60 },
-    uFadeEnd: { value: 165 },
+    uFadeStart: { value: 45 },
+    uFadeEnd: { value: 130 },
   };
 
   private readonly material: THREE.ShaderMaterial;

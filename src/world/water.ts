@@ -101,9 +101,9 @@ export class Water {
     geometry.rotateX(Math.PI / 2);
 
     const material = new THREE.MeshLambertMaterial({
-      color: 0x9fd8e8,
+      color: 0xc4eef8,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.5,
       // Seen only from below; culling the top face avoids drawing it twice
       // when the camera orbits above the swimmer near the surface.
       side: THREE.BackSide,

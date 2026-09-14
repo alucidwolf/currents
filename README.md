@@ -41,11 +41,36 @@ when you move the mouse.
 | --- | --- |
 | `#ambient` | Skip the menu, pick an animal at random, start swimming. **This is the link to leave open on a second monitor.** |
 | `#seed=abc123` | Rebuild a specific ocean exactly. The current seed is shown bottom-left. |
+| `#species=manta` | Start as a named animal (`whale`, `turtle`, `manta`, `dolphin`), skipping the menu. |
+
+Fragments combine: `#seed=reef7&species=manta`.
+
+## Art direction
+
+Smooth stylised, not faceted low-poly. Simple rounded forms, smooth shading,
+and **bright saturated colour** — detail comes from silhouette and clean colour
+blocking rather than from surface texture or polygon count.
+
+Two rules earned the hard way:
+
+**Brightness and saturation are different levers.** Piling on ambient light
+makes everything lighter but drags every surface toward the ambient hue, so the
+scene converges on one milky tint and all colour separation is lost. The look
+comes from bright *base colours* under moderate light, not from more light.
+
+**Don't mix a warm key with a cool ambient.** A warm sun against cyan ambient
+puts the two lights on opposite sides of the colour wheel, and they average out
+to grey on every surface. The key light is neutral and faintly cool.
+
+Depth reads as *bluer*, never darker: the far distance is a saturated blue, not
+black. Animals are countershaded with strongly contrasting values and carry one
+graphic accent each — the humpback's white pectorals, the ray's dark wingtips —
+in the way a seabird's dark primaries read against a pale body.
 
 ## How it works
 
 Everything is generated in code — there are no model files, textures, or audio
-assets anywhere in the project. The whole thing is Three.js and about 2,000
+assets anywhere in the project. The whole thing is Three.js and about 2,500
 lines of TypeScript.
 
 **The ocean is endless.** Seabed chunks are built from noise sampled in world

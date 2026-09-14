@@ -36,11 +36,19 @@ interface Job {
   stage: Stage;
 }
 
-/** Floor palette, from trench bed up to sunlit reef top. */
-const DEEP_SILT = new THREE.Color(0x3a4750);
-const SILT = new THREE.Color(0x8b8e6d);
-const SAND = new THREE.Color(0xcdbb8b);
-const ROCK = new THREE.Color(0x4a5058);
+/**
+ * Floor palette, from trench bed up to sunlit reef top.
+ *
+ * Warm bright sand against saturated blue water is most of what makes the
+ * shallows read as inviting rather than as a dim sea floor. The trench tone is
+ * a cool blue-grey rather than mud, so depth again reads as bluer, not dirtier.
+ */
+const DEEP_SILT = new THREE.Color(0x3f6382);
+const SILT = new THREE.Color(0x9cb96a);
+const SAND = new THREE.Color(0xf0d99a);
+// Darker than the sand it sits on, to put some value range back into a scene
+// that otherwise drifts entirely into the mid-tones.
+const ROCK = new THREE.Color(0x5f6b78);
 
 interface Chunk {
   cx: number;

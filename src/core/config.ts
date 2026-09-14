@@ -34,27 +34,54 @@ export const WORLD = {
 } as const;
 
 export const WATER = {
-  /** Exponential fog density. Higher = murkier, shorter draw distance. */
-  fogDensity: 0.0135,
-  /** Fog/ambient tint just under the surface. */
-  shallowColor: 0x2e8fa8,
-  /** Fog/ambient tint down at the seabed. */
-  deepColor: 0x06263f,
-  /** Depth over which shallow blends to deep. */
-  tintDepth: 44,
-  /** Hemisphere light's downward colour. Too dark here and flanks go black. */
-  groundColor: 0x1a3243,
-  sunColor: 0xfff3d6,
   /**
-   * Three's lights are physical by default, so these sum to something close to
-   * "one sun plus bounce". Pushing the total much past ~1.7 clips the pale
-   * undersides to flat white and destroys the countershading entirely.
+   * Exponential fog density. Higher = murkier, shorter draw distance.
+   *
+   * Loosened from the original murk: the art direction wants long, clear
+   * sightlines with colour doing the depth cueing, not a wall of haze.
    */
-  sunIntensity: 1.0,
+  fogDensity: 0.0084,
+  /** Fog/ambient tint just under the surface. */
+  shallowColor: 0x33b6cd,
+  /**
+   * Fog/ambient tint down at the seabed.
+   *
+   * Deliberately a saturated blue rather than near-black. Depth should read as
+   * *bluer*, not as darker — the moment the far distance goes to black the
+   * whole scene reads as murky instead of deep.
+   */
+  deepColor: 0x14547e,
+  /**
+   * Depth over which shallow blends to deep.
+   *
+   * Generous, so ordinary cruising depth stays in the vivid part of the ramp.
+   * Tightening this drags the everyday view toward the deep tone and the
+   * scene loses its colour well before it has any reason to.
+   */
+  tintDepth: 72,
+  /** Hemisphere light's downward colour. Too dark here and flanks go black. */
+  groundColor: 0x2a5f77,
+  /**
+   * Neutral, faintly cool. A warm sun was the hidden cause of the muddiness:
+   * warm key light against cyan ambient lands on opposite sides of the wheel,
+   * and the two average out to grey across every surface in the scene.
+   */
+  sunColor: 0xf2fbff,
+  /**
+   * Brightness and saturation are not the same lever, and confusing them is
+   * the easy mistake here. Piling on ambient light makes everything lighter,
+   * but it also drags every surface toward the ambient hue, so the whole scene
+   * converges on one milky tint and the colour separation disappears.
+   *
+   * The bright, saturated look comes from bright *base colours* under moderate
+   * light. Keep the total near 1.8; past roughly 2.3 the pale undersides clip
+   * to flat white and the countershading goes with them.
+   */
+  sunIntensity: 0.95,
   ambientIntensity: 0.62,
-  /** Dim counter-light so side-on surfaces are not silhouettes. */
-  fillColor: 0x4e8ba8,
-  fillIntensity: 0.28,
+  /** Counter-light so side-on surfaces are not silhouettes. */
+  fillColor: 0x62b6cd,
+  fillIntensity: 0.22,
 } as const;
 
 export const SWIM = {

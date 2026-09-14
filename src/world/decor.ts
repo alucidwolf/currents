@@ -18,11 +18,16 @@ import type { Terrain } from "./terrain";
  * frond. One shared vertex shader then leans everything on the same current.
  */
 
-const CORAL_COLORS = [0xc4705f, 0xd08a63, 0xa8566a, 0xc9a15c, 0x8f6b9e, 0xb5555a];
-// Lifted well off black: against a dark teal fog the earlier greens read as
+// Saturated and bright, to sit as clean blocks of colour against the water
+// rather than as muted lumps. A reef is the one place in the scene where
+// strong hue is doing the work.
+const CORAL_COLORS = [0xe8836b, 0xf0a06e, 0xdc6a85, 0xeebb6d, 0xa87fc6, 0xe06a72];
+// Lifted well off black: against the fog the earlier greens read as
 // silhouetted poles rather than as plants.
-const KELP_COLORS = [0x6d8a45, 0x7d9a4c, 0x5c7a41, 0x8aa356, 0x647f3e];
-const ROCK_COLORS = [0x5c6068, 0x4e535c, 0x6b6f76];
+const KELP_COLORS = [0x82a955, 0x93b962, 0x6f9749, 0xa3c46c, 0x7a9d4d];
+// Kept dark against the bright sand. Boulders are the main source of value
+// contrast on the seabed, and pale ones let the whole floor go flat.
+const ROCK_COLORS = [0x646f7b, 0x55606b, 0x73808d];
 
 /**
  * Attempts per chunk, not placements. The reef-density field rejects most of
@@ -277,20 +282,26 @@ function props(): PropLibrary {
  * into a curve rather than tilting it rigidly.
  */
 function makeKelp(rng: Rng): THREE.BufferGeometry {
-  const height = randRange(rng, 3.5, 8.5);
-  const width = randRange(rng, 0.28, 0.62);
+  const height = randRange(rng, 3.2, 7.8);
+  // Broad fronds, not straps. Narrow blades read as bare poles at any
+  // distance; the reference look wants plants with visible surface area.
+  const width = randRange(rng, 0.7, 1.5);
   const twist = rng() * Math.PI;
 
   const blade = (w: number, h: number, turn: number) => {
     const geometry = new THREE.PlaneGeometry(w, h, 1, 6);
     geometry.translate(0, h / 2, 0);
 
-    // Taper toward the tip. A constant-width strip reads as a plank; narrowing
-    // it is the single change that makes it look grown rather than cut.
+    // Narrow at the holdfast, broad through the middle, tapering to the tip —
+    // the shape a frond actually grows into, and far more plant-like than a
+    // strip that simply narrows from the base.
     const position = geometry.getAttribute("position") as THREE.BufferAttribute;
     for (let i = 0; i < position.count; i++) {
       const t = Math.max(0, position.getY(i)) / h;
-      position.setX(i, position.getX(i) * (1 - 0.62 * t * t));
+      const widthAt = Math.sin(Math.PI * Math.pow(t, 0.72)) * 0.85 + 0.2;
+      position.setX(i, position.getX(i) * widthAt);
+      // A gentle lengthwise curl, so a bed of them is not a row of flat cards.
+      position.setZ(i, position.getZ(i) + Math.sin(t * 2.4) * w * 0.35);
     }
 
     geometry.rotateY(turn);

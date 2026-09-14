@@ -213,18 +213,26 @@ const whale: SpeciesDef = {
       );
     }
 
-    let geometry = applyCountershading(mergeGeometries(parts), 0x1f2e40, 0x9fb1b8, 0.5);
+    let geometry = applyCountershading(mergeGeometries(parts), 0x3d7aa8, 0xe9f1f3, 0.5);
 
-    // Ventral pleats: the long grooves running back from the jaw along the
-    // throat. Shading rather than geometry — at any distance you actually see
-    // this animal, the difference is not perceptible.
     geometry = overlayPattern(geometry, (x, y, z) => {
+      // White pectorals. A humpback's flippers are startlingly pale against
+      // the body, and that hard light/dark split is the strongest graphic
+      // element the animal has — the same job the dark primaries do on a
+      // bird's wing, in reverse.
+      const pectoral =
+        smooth(Math.abs(x), 1.8, 2.8) * smooth(z, 0.2, 1.0) * (1 - smooth(z, 2.8, 3.6));
+      if (pectoral > 0.01) return 1 + pectoral * 2.4;
+
+      // Ventral pleats: the long grooves running back from the jaw along the
+      // throat. Shading rather than geometry — at any distance you actually
+      // see this animal, the difference is not perceptible.
       const throat = smooth(z, -length * 0.04, length * 0.3) * smooth(-y, 0.15, 1.2);
       if (throat <= 0.01) return 1;
       const phase = x * 3.4;
       const groove = phase - Math.floor(phase);
       const edge = Math.min(groove, 1 - groove);
-      return 1 - throat * (1 - smooth(edge, 0.05, 0.24)) * 0.42;
+      return 1 - throat * (1 - smooth(edge, 0.05, 0.24)) * 0.34;
     });
 
     // Set into the flank rather than stuck on it: positioning against the
@@ -352,13 +360,14 @@ const dolphin: SpeciesDef = {
       );
     }
 
-    let geometry = applyCountershading(mergeGeometries(parts), 0x3b4f63, 0xc4d2da, 0.48);
+    let geometry = applyCountershading(mergeGeometries(parts), 0x6b8fb2, 0xf3f8fa, 0.48);
 
-    // The dark cape sweeping back from the melon over the shoulder, and the
-    // faint stripe from eye to flipper. Both are standard dolphin markings.
+    // The dark cape sweeping back from the melon over the shoulder — a
+    // standard dolphin marking, and a second value step between the light
+    // belly and the mid-tone back.
     geometry = overlayPattern(geometry, (_x, y, z) => {
       const cape = smooth(z, -length * 0.1, length * 0.34) * smooth(y, -0.1, 0.35);
-      return 1 - cape * 0.3;
+      return 1 - cape * 0.34;
     });
 
     const eyeT = 0.8;
@@ -448,18 +457,23 @@ const manta: SpeciesDef = {
       ),
     );
 
-    let geometry = applyCountershading(mergeGeometries(parts), 0x1d232b, 0xa9b6c2, 0.46);
+    let geometry = applyCountershading(mergeGeometries(parts), 0x33587f, 0xdfecf3, 0.46);
 
-    // Gill slits: five dark bars either side of the underside, behind the
-    // mouth. Only visible from below, which is exactly when you want them.
     geometry = overlayPattern(geometry, (x, y, z) => {
-      if (y > -0.02) return 1;
+      // Darkened wingtips. The same graphic device as a seabird's primaries:
+      // a clean dark band at the extremity that sharpens the silhouette and
+      // stops a large flat animal reading as one undifferentiated shape.
+      const tip = smooth(Math.abs(x), span * 0.3, span * 0.49) * 0.42;
+
+      // Gill slits: five dark bars either side of the underside, behind the
+      // mouth. Only visible from below, which is exactly when you want them.
+      if (y > -0.02) return 1 - tip;
       const band = smooth(z, -length * 0.1, length * 0.3) * smooth(Math.abs(x), 0.3, 1.5);
-      if (band <= 0.01) return 1;
+      if (band <= 0.01) return 1 - tip;
       const phase = z * 2.6;
       const slit = phase - Math.floor(phase);
       const edge = Math.min(slit, 1 - slit);
-      return 1 - band * (1 - smooth(edge, 0.03, 0.16)) * 0.5;
+      return (1 - tip) * (1 - band * (1 - smooth(edge, 0.03, 0.16)) * 0.5);
     });
 
     geometry = attachDetails(
@@ -540,8 +554,8 @@ const turtle: SpeciesDef = {
 
     let geometry = applyCountershading(
       mergeGeometries([shell, head]),
-      0x35411f,
-      0xaaa877,
+      0x74924e,
+      0xdcd9a4,
       0.42,
     );
 
@@ -585,9 +599,9 @@ const turtle: SpeciesDef = {
     root.add(shellMesh);
 
     const flipperMaterial = new THREE.MeshLambertMaterial({
-      // Close to the carapace's own dark tone. Brighter than this and the
-      // flippers read as detached paddles rather than part of the animal.
-      color: 0x55632f,
+      // Close to the carapace's own tone. Too far from it and the flippers
+      // read as detached paddles rather than part of the animal.
+      color: 0x6d8a4a,
       flatShading: false,
     });
 
