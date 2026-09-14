@@ -159,6 +159,22 @@ body {
   text-align: center;
 }
 
+.start__mark {
+  display: block;
+  width: clamp(9rem, 26vw, 15rem);
+  height: auto;
+  margin: 0 auto clamp(0.6rem, 2vw, 1.1rem);
+  /* Sits it on the water rather than in front of it. */
+  filter: drop-shadow(0 6px 22px rgb(0 0 0 / 45%));
+}
+
+/* Short viewports need the room for the animal picker more than for a crest. */
+@media (max-height: 560px) {
+  .start__mark {
+    display: none;
+  }
+}
+
 .start__title {
   margin: 0;
   font-size: clamp(2.6rem, 9vw, 5rem);

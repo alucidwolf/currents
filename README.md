@@ -100,6 +100,34 @@ black. Animals are countershaded with strongly contrasting values and carry one
 graphic accent each — the humpback's white pectorals, the ray's dark wingtips —
 in the way a seabird's dark primaries read against a pale body.
 
+## Brand assets
+
+`brand/currents-logo.jpg` is the original artwork; everything in `public/` is
+derived from it, so it is the file to replace if the logo ever changes. The
+measurements needed to redo that, taken against the 1408×768 source:
+
+| | |
+| --- | --- |
+| Background | `#F3F4EE`, with visible JPEG grain |
+| Mark (ray, bubbles, swirls) | x 432–976, y 120–500 — exactly centred |
+| Wordmark | x 408–1004, y 572–640 |
+
+The square icons are composed around the mark's own centre rather than cropped,
+because any square large enough to give the mark breathing room also reaches
+down into the wordmark. They keep the cream field: it is the logo as drawn, and
+a mark floating on transparency would take whatever colour the browser's tab
+strip happened to be. The maskable icon holds the mark to 60% of the width so it
+survives being cropped to a circle.
+
+`logo-mark.png` is the exception — the cream lifted out, for use inside the app
+where the background is near-black. Two things that a plain colour key gets
+wrong: the grain across the cream clears any threshold low enough to preserve
+the pale swirls, leaving a speckled rectangle floating behind the artwork, so
+only background *connected to the border* is a candidate for removal. And every
+antialiased edge is part cream, so partly-transparent pixels have it unmixed
+back out — `fg = (observed − (1−a)·bg) / a` — which is the difference between a
+clean edge and a pale fringe around everything.
+
 ## How it works
 
 Everything is generated in code — there are no model files, textures, or audio

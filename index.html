@@ -9,7 +9,25 @@
       name="description"
       content="A calm procedurally generated ocean to drift through."
     />
-    <link rel="icon" href="data:," />
+    <!--
+      favicon.ico carries 16/32/48 for anything that asks for the classic name;
+      the PNGs are what modern browsers actually pick up.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#061c2c" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Currents" />
+    <meta
+      property="og:description"
+      content="A calm procedurally generated ocean to drift through."
+    />
+    <meta property="og:image" content="/og-image.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <canvas id="scene"></canvas>
@@ -37,6 +55,19 @@
 
     <div id="start" class="start">
       <div class="start__inner">
+        <!--
+          The mark with its cream field lifted out, so it sits on the water
+          rather than on a pale tile. Decorative: the title beneath already
+          names the game, so announcing it twice helps nobody.
+        -->
+        <img
+          class="start__mark"
+          src="/logo-mark.png"
+          alt=""
+          width="544"
+          height="380"
+          decoding="async"
+        />
         <h1 class="start__title">Currents</h1>
         <p class="start__sub">Pick something to be. Then just drift.</p>
         <div id="start-choices" class="start__choices"></div>
