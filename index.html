@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>Currents</title>
+    <meta
+      name="description"
+      content="A calm procedurally generated ocean to drift through."
+    />
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+
+    <div id="hud" class="hud" aria-live="polite">
+      <div class="hud__hints">
+        <span><b>Drag</b> to look around</span>
+        <span><b>Right-hold</b> to steer</span>
+        <span><b>Scroll</b> to zoom</span>
+      </div>
+      <div class="hud__meta">
+        <span id="hud-seed"></span>
+        <span class="hud__dim">H hints &middot; F stats</span>
+      </div>
+    </div>
+
+    <pre id="stats" class="stats" hidden></pre>
+
+    <div id="start" class="start">
+      <div class="start__inner">
+        <h1 class="start__title">Currents</h1>
+        <p class="start__sub">Pick something to be. Then just drift.</p>
+        <div id="start-choices" class="start__choices"></div>
+        <button id="start-reseed" class="start__reseed" type="button">
+          New ocean
+        </button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
