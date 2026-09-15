@@ -356,10 +356,30 @@ if (named) {
     choicesHost: document.getElementById("start-choices")!,
     reseedButton: document.getElementById("start-reseed")!,
     onReseed: () => {
-      // A different seed is a different ocean; a reload is the cleanest way to
-      // rebuild every system that derives from it.
-      location.hash = "";
-      location.reload();
+      // Put the loading screen back up *before* navigating. The white flash on
+      // a reload comes from the browser painting the new document before it has
+      // any styles, and nothing the new page does can prevent what is shown
+      // while the old one is still on screen. Since both ends of the navigation
+      // now show the same gradient, there is no visible seam across it.
+      const boot = document.getElementById("boot");
+      if (boot) {
+        boot.dataset.done = "false";
+      } else {
+        // Already removed, so rebuild the same thing from the inline styles.
+        const replacement = document.createElement("div");
+        replacement.id = "boot";
+        replacement.innerHTML = '<span class="boot__word">Currents</span>';
+        document.body.appendChild(replacement);
+      }
+
+      // One frame for that to paint, then go. Reloading in the same tick would
+      // navigate before the cover was ever shown.
+      requestAnimationFrame(() => {
+        // A different seed is a different ocean; a reload is the cleanest way
+        // to rebuild every system that derives from it.
+        location.hash = "";
+        location.reload();
+      });
     },
   }).then(adoptSpecies);
 }
@@ -389,4 +409,40 @@ if (CAMERA.idleEnabled) {
   rig.update(0.016, input, swimmer);
 }
 
+/**
+ * Compile every shader the first frame will need, before that frame is drawn.
+ *
+ * Three compiles a material's program the first time it is actually rendered,
+ * so without this the opening frame stalls while the terrain, the reef, the
+ * water, the animal and the diorama pass are all built in turn. That stall
+ * lands exactly where it is most visible: on the first thing anyone sees.
+ * Doing it here moves the cost behind the loading screen, which is what a
+ * loading screen is for.
+ */
+renderer.compile(scene, rig.camera);
+
 loop.start();
+
+/**
+ * Take the loading screen down once there is genuinely something behind it.
+ *
+ * Two frames, not one. The first is the frame the compile above was preparing
+ * for and can still be the slow one; waiting for a second means what gets
+ * revealed is a world already running rather than one that judders as it is
+ * uncovered.
+ */
+function dismissBoot(): void {
+  const boot = document.getElementById("boot");
+  if (!boot || boot.dataset.done === "true") return;
+  boot.dataset.done = "true";
+  // Removed rather than left transparent, so it can never intercept a pointer.
+  window.setTimeout(() => boot.remove(), 1000);
+}
+
+requestAnimationFrame(() => requestAnimationFrame(dismissBoot));
+
+// A stuck loading screen is far worse than an early one: if anything above
+// throws, or the tab is backgrounded before a frame is ever drawn, the
+// animation frames never arrive and the page would sit behind the gradient for
+// good.
+window.setTimeout(dismissBoot, 8000);

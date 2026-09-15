@@ -28,8 +28,150 @@
     />
     <meta property="og:image" content="/og-image.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!--
+      Inline, and deliberately so. Everything else about this page arrives too
+      late to prevent a flash: the stylesheet is imported from the entry module,
+      so in development it is injected only once the JavaScript has run, and
+      until then the browser paints a white page with the menu markup stacked up
+      raw. A stylesheet link would not help on a reload either — the gap being
+      covered there is between two documents, before any external file for the
+      new one has been asked for.
+
+      So the first paint has to be right with nothing loaded at all, which means
+      no images and no fonts: the loading screen is a gradient and one word.
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #061c2c;
+      }
+
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: grid;
+        place-items: center;
+        /* Sunlight through a surface, falling away into deep water. */
+        background:
+          radial-gradient(
+            130% 78% at 50% -14%,
+            rgba(150, 226, 244, 0.55),
+            rgba(150, 226, 244, 0) 62%
+          ),
+          linear-gradient(180deg, #1d6d8c 0%, #0e3d59 44%, #061c2c 100%);
+        opacity: 1;
+        transition: opacity 0.85s ease;
+      }
+
+      #boot[data-done="true"] {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /*
+        Light shafts, drifting slowly enough to be felt rather than watched.
+
+        Three of them at uneven angles and spacings, not a repeating pattern:
+        evenly spaced bars of equal weight stop reading as sunlight through
+        water almost immediately. Heavily blurred, and masked away toward the
+        bottom, because shafts lose themselves with depth.
+      */
+      #boot::after {
+        content: "";
+        position: absolute;
+        inset: -12% -25% 0 -25%;
+        background:
+          linear-gradient(
+            101deg,
+            transparent 17%,
+            rgba(198, 240, 252, 0.09) 22%,
+            transparent 28%
+          ),
+          linear-gradient(
+            96deg,
+            transparent 45%,
+            rgba(198, 240, 252, 0.06) 50%,
+            transparent 57%
+          ),
+          linear-gradient(
+            105deg,
+            transparent 70%,
+            rgba(198, 240, 252, 0.075) 75%,
+            transparent 81%
+          );
+        filter: blur(22px);
+        -webkit-mask-image: linear-gradient(
+          180deg,
+          rgba(0, 0, 0, 1) 0%,
+          rgba(0, 0, 0, 0.3) 46%,
+          transparent 76%
+        );
+        mask-image: linear-gradient(
+          180deg,
+          rgba(0, 0, 0, 1) 0%,
+          rgba(0, 0, 0, 0.3) 46%,
+          transparent 76%
+        );
+        animation: boot-drift 19s ease-in-out infinite alternate;
+      }
+
+      .boot__word {
+        position: relative;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          sans-serif;
+        font-size: clamp(0.95rem, 3vw, 1.35rem);
+        font-weight: 300;
+        letter-spacing: 0.42em;
+        /* Tracking adds the gap after the last letter too; this recentres it. */
+        text-indent: 0.42em;
+        text-transform: uppercase;
+        color: #d6eef7;
+        animation: boot-breathe 4.2s ease-in-out infinite;
+      }
+
+      @keyframes boot-drift {
+        from {
+          transform: translate3d(-3%, 0, 0);
+        }
+        to {
+          transform: translate3d(3%, 0, 0);
+        }
+      }
+
+      @keyframes boot-breathe {
+        0%,
+        100% {
+          opacity: 0.38;
+        }
+        50% {
+          opacity: 0.78;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #boot::after,
+        .boot__word {
+          animation: none;
+        }
+        .boot__word {
+          opacity: 0.62;
+        }
+      }
+    </style>
   </head>
   <body>
+    <!--
+      First element in the document, so it is covering the page from the first
+      paint rather than arriving after something else has already been seen.
+    -->
+    <div id="boot" role="status" aria-label="Loading">
+      <span class="boot__word">Currents</span>
+    </div>
+
     <canvas id="scene"></canvas>
 
     <div id="hud" class="hud" aria-live="polite">

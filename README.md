@@ -100,6 +100,32 @@ black. Animals are countershaded with strongly contrasting values and carry one
 graphic accent each — the humpback's white pectorals, the ray's dark wingtips —
 in the way a seabird's dark primaries read against a pale body.
 
+## The loading screen
+
+A gradient and one word, styled inline in `<head>` and sitting first in the
+body. That is not laziness — it is the only way to cover the two gaps that
+actually flash.
+
+Everything else on the page arrives too late. The stylesheet is imported from
+the entry module, so in development it is injected only once the JavaScript has
+run, and until then the browser paints a white page with the menu markup stacked
+up raw. And a stylesheet link would not help the *New ocean* reload either,
+because the gap there is between two documents, before the new one has asked for
+any file at all. Inline styles and no external assets are what make the first
+paint correct with nothing loaded.
+
+It comes down once there is genuinely something behind it: shaders are compiled
+up front with `renderer.compile`, because Three otherwise builds each material's
+program the first time it is rendered and that stall lands on the very first
+frame anyone sees. Then two animation frames pass — the first can still be slow,
+and waiting for the second means what gets revealed is a world already running.
+A timeout takes the screen down regardless after eight seconds, since a stuck
+loading screen is far worse than an early one.
+
+*New ocean* raises the same screen **before** navigating, waits a frame for it to
+paint, and only then reloads. Both ends of the navigation now show the same
+gradient, so there is no seam across it.
+
 ## Brand assets
 
 `brand/currents-logo.jpg` is the original artwork; everything in `public/` is
