@@ -8,3 +8,4 @@ tools/.reef-check.mjs
 Thumbs.db
 *.log
 tools/.body-check.mjs
+tools/.steering-check.mjs

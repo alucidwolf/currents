@@ -23,6 +23,7 @@ npm run dev      # http://127.0.0.1:5173
 | `npm run verify:wander` | Headless check of the ambient wander (see below) |
 | `npm run verify:reef` | Headless survey of how life is distributed on the seabed |
 | `npm run verify:bodies` | Headless check that the animals are solid and face outward |
+| `npm run verify:steering` | Headless check that each control goes the way it looks |
 
 ## Controls
 
@@ -47,6 +48,21 @@ each axis is eased rather than read raw; otherwise a turn would go from nothing
 to full rate in a single frame, which is exactly the jolt this is meant not to
 have. The ease-out runs before control is handed back, so a turn unwinds instead
 of being dropped mid-lean.
+
+Left and right shipped inverted, and the reason is worth keeping. The change was
+checked by holding right and watching the yaw number go up, which it did — but
+nobody asked what a larger yaw does on screen. `forward` is
+`(sin yaw, ·, cos yaw)`, so a larger yaw swings toward +X, while screen right is
+`cross(forward, up)`, which is −X. Larger yaw turns the animal *left*. The
+cursor never had this problem because it derives its heading from a world
+direction, so it is correct by construction whichever way the signs run.
+
+`npm run verify:steering` now presses each key, steps the real swimmer, and asks
+which way the animal moved relative to where the screen's right and up were
+pointing — deliberately never looking at yaw, because yaw is the number that
+lied. It also checks left and right mirror each other, since two keys drifting
+the same way would otherwise pass. Run against the old sign it reports right
+arrow carrying the animal 12.4 metres to the *left*.
 
 ## URL options
 

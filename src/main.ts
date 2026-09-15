@@ -6,6 +6,7 @@ import { createLoop } from "./core/loop";
 import { formatSeed, resolveWorldSeed } from "./core/rng";
 import { CameraRig } from "./control/cameraRig";
 import { createInput } from "./control/input";
+import { keyboardCommand } from "./control/steering";
 import { Swimmer } from "./creatures/swimmer";
 import type { SteerCommand } from "./creatures/swimmer";
 import { Wander } from "./creatures/wander";
@@ -216,26 +217,23 @@ function playerCommand(): SteerCommand {
  * Turn the arrow keys into a heading.
  *
  * Relative where the cursor is absolute: a key says "keep turning this way",
- * not "go to that point". The commanded yaw is therefore led far enough ahead
- * of the current one that it is always the turn-rate limit doing the work, and
- * the eased axis scales that limit — so a turn leans in when the key goes down
- * and unwinds when it comes up, instead of switching on and off.
+ * not "go to that point". The eased axis scales the turn rate, so a turn leans
+ * in when the key goes down and unwinds when it comes up, instead of switching
+ * on and off.
  *
  * Speed is not touched. The keys change where the animal is pointing and
  * nothing else; it cruises at the same pace whether it is turning or not.
+ *
+ * The maths lives in `control/steering` so its signs can be tested against
+ * which way the animal actually ends up going.
  */
 function keyCommand(): SteerCommand {
-  const strength = Math.max(Math.abs(input.steerX), Math.abs(input.steerY));
-
-  return {
-    yaw: swimmer.yaw + input.steerX * 1.2,
-    // With no vertical key held this is level, so the animal eases back to flat
-    // rather than holding whatever climb it was last given. A pitch that sticks
-    // is the difference between steering and trimming, and only one of those is
-    // relaxing to use.
-    pitch: input.steerY * SWIM.keySteerMaxPitch,
-    turnRate: SWIM.playerTurnRate * (species?.turnScale ?? 1) * strength,
-  };
+  return keyboardCommand(
+    input.steerX,
+    input.steerY,
+    swimmer.yaw,
+    SWIM.playerTurnRate * (species?.turnScale ?? 1),
+  );
 }
 
 // -- frame -------------------------------------------------------------------
