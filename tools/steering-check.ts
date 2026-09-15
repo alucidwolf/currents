@@ -15,6 +15,9 @@
  * Run with:  npm run verify:steering
  */
 
+import { CAMERA, WORLD } from "../src/core/config";
+import { CameraRig } from "../src/control/cameraRig";
+import type { Input } from "../src/control/input";
 import { keyboardCommand, screenRight } from "../src/control/steering";
 import { Swimmer } from "../src/creatures/swimmer";
 import { Terrain } from "../src/world/terrain";
@@ -141,9 +144,87 @@ if (asymmetry > 0.5) {
   console.log("  FAIL: left and right do not mirror each other");
 }
 
+// -- the camera stays in the water -------------------------------------------
+//
+// Orbiting down swings the camera below the animal, far enough at any usual
+// distance to pass through the seabed — and with back faces culled, what you
+// see from under the floor is not rock but straight through it. Checked over
+// real terrain across the full range of pitch and zoom, because whether the
+// camera clears the ground depends on all of the pitch, the distance, and
+// whatever the seabed happens to be doing underneath.
+
+console.log("\nCamera — never under the seabed, never out of the water\n");
+
+/** Just enough of an Input for the rig; it reads no more than this. */
+function fakeInput(dragX: number, dragY: number): Input {
+  return {
+    dragX,
+    dragY,
+    wheel: 0,
+    steering: false,
+    steerX: 0,
+    steerY: 0,
+    keySteering: false,
+    ndcX: 0,
+    ndcY: 0,
+    // Past the idle delay the rig starts drifting on its own, which would make
+    // this measure the drift rather than the dragging.
+    idleTime: 0,
+    consume() {},
+    tick() {},
+    dispose() {},
+  };
+}
+
+const cameraTerrain = new Terrain(0x5eed);
+let worstIntoFloor = 0;
+let worstIntoAir = 0;
+let samples = 0;
+
+for (const startDepth of [6, 14, 30]) {
+  for (const distance of [CAMERA.minDistance, CAMERA.distance, CAMERA.maxDistance]) {
+    const swimmer = new Swimmer(cameraTerrain);
+    const rig = new CameraRig(16 / 9, cameraTerrain);
+    rig.setPreferredDistance(distance);
+
+    // Sit the animal a set height above whatever the floor is doing here.
+    swimmer.position.set(120, cameraTerrain.heightAt(120, -80) + startDepth, -80);
+    swimmer.object.position.copy(swimmer.position);
+
+    // Drag all the way down, then all the way back up, a frame at a time.
+    for (let i = 0; i < 900; i++) {
+      const dragY = i < 450 ? -14 : 14;
+      rig.update(DT, fakeInput(0, dragY), swimmer);
+
+      const { x, y, z } = rig.camera.position;
+      const floor = cameraTerrain.heightAt(x, z) + CAMERA.floorClearance;
+      const ceiling = WORLD.surfaceY - CAMERA.airClearance;
+
+      worstIntoFloor = Math.max(worstIntoFloor, floor - y);
+      // Only counts as breaking out when there was room to stay under.
+      if (ceiling > floor) worstIntoAir = Math.max(worstIntoAir, y - ceiling);
+      samples++;
+    }
+  }
+}
+
+console.log(`samples                 ${samples}`);
+console.log(`deepest into the floor  ${worstIntoFloor.toFixed(3)} m`);
+console.log(`highest into the air    ${worstIntoAir.toFixed(3)} m`);
+
+// A hair of tolerance for floating point, and nothing more.
+if (worstIntoFloor > 0.001) {
+  failures++;
+  console.log(`  FAIL: camera went ${worstIntoFloor.toFixed(2)} m below its floor clearance`);
+}
+if (worstIntoAir > 0.001) {
+  failures++;
+  console.log(`  FAIL: camera rose ${worstIntoAir.toFixed(2)} m out of the water`);
+}
+
 console.log("");
 if (failures > 0) {
-  console.log(`${failures} steering check(s) failed.`);
+  console.log(`${failures} check(s) failed.`);
   process.exit(1);
 }
-console.log("Every control goes the way it looks.");
+console.log("Every control goes the way it looks, and the camera stays in the water.");

@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { CAMERA } from "../core/config";
+import { CAMERA, WORLD } from "../core/config";
 import { angleDelta } from "../creatures/swimmer";
 import type { Swimmer } from "../creatures/swimmer";
+import type { Terrain } from "../world/terrain";
 import type { Input } from "./input";
 
 /**
@@ -30,13 +31,42 @@ export class CameraRig {
   private readonly desiredPosition = new THREE.Vector3();
   private idlePhase = 0;
 
-  constructor(aspect: number) {
+  constructor(
+    aspect: number,
+    private readonly terrain: Terrain,
+  ) {
     this.camera = new THREE.PerspectiveCamera(
       CAMERA.fov,
       aspect,
       CAMERA.near,
       CAMERA.far,
     );
+  }
+
+  /**
+   * Hold a camera position inside the water.
+   *
+   * Orbiting down swings the camera below the animal, and at any usual distance
+   * that is far enough below to pass through the seabed. What you see from
+   * under it is not rock — back faces are culled, so the ground simply is not
+   * there and you are looking out at open water through a hole.
+   *
+   * Raising the camera rather than pulling it in is deliberate. The boom also
+   * shortens horizontally as the pitch steepens, so a camera held at floor
+   * level keeps closing on the animal as you drag, and ends up looking up at it
+   * from just above the sand — a real shot, and one you arrive at by continuing
+   * to drag rather than by hitting a wall.
+   *
+   * The floor is applied last so it wins: in water shallow enough that the two
+   * bounds cross, being briefly out of the water is a far smaller problem than
+   * being inside the ground.
+   */
+  private keepInWater(position: THREE.Vector3): void {
+    const ceiling = WORLD.surfaceY - CAMERA.airClearance;
+    if (position.y > ceiling) position.y = ceiling;
+
+    const floor = this.terrain.heightAt(position.x, position.z) + CAMERA.floorClearance;
+    if (position.y < floor) position.y = floor;
   }
 
   resize(aspect: number): void {
@@ -105,10 +135,18 @@ export class CameraRig {
       this.target.z + Math.cos(yaw) * cp * this.distance,
     );
 
+    this.keepInWater(this.desiredPosition);
+
     // A light positional ease on top absorbs the speed "breathing" so the
     // camera does not visibly pump back and forth.
     const ease = 1 - Math.exp(-dt / 0.16);
     this.camera.position.lerp(this.desiredPosition, ease);
+
+    // Again after easing, and this is the one that actually guarantees it. The
+    // lerp can cut a corner through ground that neither end was inside, and the
+    // seabed can just as easily rise into a camera that never moved.
+    this.keepInWater(this.camera.position);
+
     this.camera.lookAt(this.target);
   }
 }

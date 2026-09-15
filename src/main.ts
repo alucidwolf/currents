@@ -69,7 +69,7 @@ const current = new Current(worldSeed);
 
 const swimmer = new Swimmer(terrain);
 const wander = new Wander(terrain, worldSeed);
-const rig = new CameraRig(window.innerWidth / window.innerHeight);
+const rig = new CameraRig(window.innerWidth / window.innerHeight, terrain);
 const input = createInput(canvas);
 const hud = new Hud();
 

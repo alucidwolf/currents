@@ -23,13 +23,13 @@ npm run dev      # http://127.0.0.1:5173
 | `npm run verify:wander` | Headless check of the ambient wander (see below) |
 | `npm run verify:reef` | Headless survey of how life is distributed on the seabed |
 | `npm run verify:bodies` | Headless check that the animals are solid and face outward |
-| `npm run verify:steering` | Headless check that each control goes the way it looks |
+| `npm run verify:steering` | Headless check that each control goes the way it looks, and that the camera stays in the water |
 
 ## Controls
 
 | Input | Effect |
 | --- | --- |
-| **Left-drag** | Orbit the camera. It trails lazily through turns rather than snapping. |
+| **Left-drag** | Orbit the camera. It trails lazily through turns rather than snapping, and stays above the seabed and under the surface however far you swing it. |
 | **Scroll** | Zoom in and out. |
 | **Right-hold** | Steer: the animal curves toward your cursor. Release and it goes back to wandering on its own. |
 | **Arrow keys** | Steer without the mouse — left and right turn, up and down climb and dive. Speed never changes; the keys only change where the animal is pointing. Let go and it levels off and goes back to wandering. |

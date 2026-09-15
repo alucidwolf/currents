@@ -249,6 +249,20 @@ export const CAMERA = {
   dragSensitivity: 0.0062,
   /** Seconds of lag as the rig trails the swimmer through turns. Higher = lazier. */
   followLag: 0.55,
+  /**
+   * How far the camera keeps off the seabed and out of the air.
+   *
+   * Orbiting down swings the camera below the animal — far enough below, at any
+   * usual distance, to end up under the floor. Back faces are culled, so from
+   * under the seabed you are not looking at rock, you are looking at nothing:
+   * straight through the ground and out at the water beyond it.
+   *
+   * The floor bound is the larger because the seabed has things standing on it,
+   * and because the surface only ever needs enough room not to break out into
+   * air that is not rendered.
+   */
+  floorClearance: 2.8,
+  airClearance: 1.4,
   /** Idle orbital drift — the screensaver camera. */
   idleDelay: 20,
   idleDriftSpeed: 0.035,
