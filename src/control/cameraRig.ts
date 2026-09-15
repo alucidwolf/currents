@@ -22,7 +22,7 @@ export class CameraRig {
 
   private orbitYaw: number = CAMERA.startYaw;
   private orbitPitch: number = CAMERA.startPitch;
-  private distance: number = CAMERA.distance;
+  private distance: number = CAMERA.startDistance;
 
   /** Eased copy of the swimmer's heading. The source of the trailing feel. */
   private followYaw = 0;
@@ -74,13 +74,24 @@ export class CameraRig {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Frame a newly chosen animal at a distance suited to its size. */
-  setPreferredDistance(distance: number): void {
-    this.distance = THREE.MathUtils.clamp(
-      distance,
+  /**
+   * Back off far enough for a newly adopted animal, and no further.
+   *
+   * A floor rather than a setting. Animals can now be swapped mid-swim, and
+   * snapping the zoom back to each one's preferred framing would throw away
+   * whatever the player had chosen to look at — every swap yanking the view is
+   * a worse cost than a whale occasionally being framed wider than ideal. So
+   * this only ever pushes the camera out, and only when the animal would
+   * otherwise be too big to see: at six units, most of a humpback is behind
+   * you.
+   */
+  ensureRoomFor(minimumDistance: number): void {
+    const floor = THREE.MathUtils.clamp(
+      minimumDistance,
       CAMERA.minDistance,
       CAMERA.maxDistance,
     );
+    if (this.distance < floor) this.distance = floor;
   }
 
   update(dt: number, input: Input, swimmer: Swimmer): void {

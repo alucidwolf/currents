@@ -234,15 +234,30 @@ export const CAMERA = {
   distance: 15,
   minDistance: 6,
   maxDistance: 52,
+  /**
+   * Where the camera sits on arrival: as far back as it goes.
+   *
+   * Close in, the animal fills the frame and the first thing anyone sees is an
+   * animal. Right out, the seabed is in shot and the first thing anyone sees is
+   * a place with an animal in it — which is what there is to look at.
+   */
+  startDistance: 52,
   /** Starting orbit offset, radians. Yaw is relative to the swimmer's heading. */
   startYaw: Math.PI,
   /**
-   * Raised a little from level. Looking down at the scene rather than across it
-   * is part of what makes it read as a model of a place — the reference look
-   * takes that much further with a fixed isometric view, which is not open to a
-   * game about following an animal, but the angle still helps.
+   * Tilted down, so the seabed is in the opening shot rather than below it.
+   *
+   * Looking down at the scene rather than across it is also part of what makes
+   * it read as a model of a place — the reference look takes that much further
+   * with a fixed isometric view, which is not open to a game about following an
+   * animal, but the angle still helps.
+   *
+   * Not steeper than this: at the full starting distance the camera rises
+   * `sin(pitch) * distance` above the animal, and past about here it reaches
+   * the surface and gets held there, which flattens the very angle being asked
+   * for.
    */
-  startPitch: 0.34,
+  startPitch: 0.42,
   minPitch: -1.1,
   maxPitch: 1.25,
   /** Mouse sensitivity for left-drag orbiting. */

@@ -185,7 +185,7 @@ for (const startDepth of [6, 14, 30]) {
   for (const distance of [CAMERA.minDistance, CAMERA.distance, CAMERA.maxDistance]) {
     const swimmer = new Swimmer(cameraTerrain);
     const rig = new CameraRig(16 / 9, cameraTerrain);
-    rig.setPreferredDistance(distance);
+    rig.ensureRoomFor(distance);
 
     // Sit the animal a set height above whatever the floor is doing here.
     swimmer.position.set(120, cameraTerrain.heightAt(120, -80) + startDepth, -80);

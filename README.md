@@ -1,9 +1,9 @@
 # Currents
 
-A calm, procedurally generated ocean to drift through in the browser. Pick an
-animal, then either steer it or leave it alone entirely — it swims and explores
-on its own indefinitely, which makes it usable as a screensaver on a spare
-monitor.
+A calm, procedurally generated ocean to drift through in the browser. It starts
+swimming the moment it loads — no menu, no button — and you can change animal
+mid-swim, steer, or leave it alone entirely. Left alone it explores on its own
+indefinitely, which makes it usable as a screensaver on a spare monitor.
 
 No score, no timer, no fail state.
 
@@ -34,6 +34,7 @@ npm run dev      # http://127.0.0.1:5173
 | **Right-hold** | Steer: the animal curves toward your cursor. Release and it goes back to wandering on its own. |
 | **Arrow keys** | Steer without the mouse — left and right turn, up and down climb and dive. Speed never changes; the keys only change where the animal is pointing. Let go and it levels off and goes back to wandering. |
 | **1**–**4**, **Tab** | Swap animal mid-swim. Numbers pick one outright, Tab walks the list (Shift+Tab backwards). Position, heading and speed all carry over, so the new animal picks up exactly where the last one was. |
+| **N** | A new ocean. Different seed, different animal. |
 | **H** | Toggle the control hints. |
 | **F** | Toggle the stats overlay (fps, draw calls, chunk count, depth). |
 | **P** | Toggle the diorama pass — depth of field, grade and vignette — to compare, or to claw back frame time. |
@@ -68,9 +69,9 @@ arrow carrying the animal 12.4 metres to the *left*.
 
 | Fragment | Effect |
 | --- | --- |
-| `#ambient` | Skip the menu, pick an animal at random, start swimming. **This is the link to leave open on a second monitor.** |
+| `#ambient` | Start with no overlay at all — no title card, and the hints already faded. **This is the link to leave open on a second monitor.** |
 | `#seed=abc123` | Rebuild a specific ocean exactly. The current seed is shown bottom-left. |
-| `#species=manta` | Start as a named animal (`whale`, `turtle`, `manta`, `dolphin`), skipping the menu. Swapping animals in game rewrites this, so a reload keeps whichever one you are currently being. |
+| `#species=manta` | Start as a named animal (`whale`, `turtle`, `manta`, `dolphin`) rather than a random one. Swapping animals in game rewrites this, so a reload keeps whichever one you are currently being. |
 
 Fragments combine: `#seed=reef7&species=manta`.
 
@@ -124,10 +125,9 @@ actually flash.
 
 Everything else on the page arrives too late. The stylesheet is imported from
 the entry module, so in development it is injected only once the JavaScript has
-run, and until then the browser paints a white page with the menu markup stacked
-up raw. And a stylesheet link would not help the *New ocean* reload either,
-because the gap there is between two documents, before the new one has asked for
-any file at all. Inline styles and no external assets are what make the first
+run, and until then the browser paints a white unstyled page. And a stylesheet
+link would not help a *new ocean* either, because the gap there is between two
+documents, before the new one has asked for any file at all. Inline styles and no external assets are what make the first
 paint correct with nothing loaded.
 
 It comes down once there is genuinely something behind it: shaders are compiled
@@ -138,7 +138,7 @@ and waiting for the second means what gets revealed is a world already running.
 A timeout takes the screen down regardless after eight seconds, since a stuck
 loading screen is far worse than an early one.
 
-*New ocean* raises the same screen **before** navigating, waits a frame for it to
+A new ocean raises the same screen **before** navigating, waits a frame for it to
 paint, and only then reloads. Both ends of the navigation now show the same
 gradient, so there is no seam across it.
 
@@ -454,7 +454,7 @@ src/
   creatures/   body construction, swim shader, the player animal, the autopilot
   render/      the diorama pass: depth of field, grade, vignette
   world/       terrain, chunk streaming, decor, water, caustics, fish, motes
-  ui/          start screen and HUD
+  ui/          HUD, title card, and what the URL asks for
 tools/         headless wander verification
 ```
 

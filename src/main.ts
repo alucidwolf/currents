@@ -23,7 +23,8 @@ import { Motes } from "./world/motes";
 import { Terrain } from "./world/terrain";
 import { Water } from "./world/water";
 import { Hud } from "./ui/hud";
-import { isAmbientMode, requestedSpecies, showStartScreen } from "./ui/startScreen";
+import { isAmbientMode, requestedSpecies } from "./ui/launch";
+import { TitleCard } from "./ui/titleCard";
 
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
 
@@ -72,6 +73,7 @@ const wander = new Wander(terrain, worldSeed);
 const rig = new CameraRig(window.innerWidth / window.innerHeight, terrain);
 const input = createInput(canvas);
 const hud = new Hud();
+const titleCard = new TitleCard();
 
 scene.add(swimmer.object);
 
@@ -139,7 +141,9 @@ function adoptSpecies(chosen: SpeciesDef, announce = false): void {
   });
 
   swimmer.object.add(creature.root);
-  rig.setPreferredDistance(chosen.viewDistance);
+  // A floor, not a reset — swapping animals should not throw away whatever the
+  // player had zoomed to.
+  rig.ensureRoomFor(chosen.viewDistance);
   rememberSpecies(chosen.id);
 
   if (announce) {
@@ -285,6 +289,8 @@ const loop = createLoop((dt, elapsed) => {
   shafts.update(dt, elapsed, swimmer.position);
   rig.update(dt, input, swimmer);
 
+  titleCard.update(dt);
+
   hud.update(dt, input.idleTime, {
     fps: loop.fps,
     chunks: chunks.liveCount,
@@ -335,51 +341,62 @@ window.addEventListener("resize", () => {
   rig.resize(window.innerWidth / window.innerHeight);
 });
 
-const startRoot = document.getElementById("start")!;
+/**
+ * Start a different ocean.
+ *
+ * The loading screen goes back up *before* navigating. The white flash on a
+ * reload comes from the browser painting the new document before it has any
+ * styles, and nothing the new page does can prevent what is shown while the old
+ * one is still up. With both ends of the navigation showing the same gradient
+ * there is no visible seam across it.
+ */
+function newOcean(): void {
+  const boot = document.getElementById("boot");
+  if (boot) {
+    boot.dataset.done = "false";
+  } else {
+    // Already removed, so rebuild the same thing from the inline styles.
+    const replacement = document.createElement("div");
+    replacement.id = "boot";
+    replacement.innerHTML = '<span class="boot__word">Currents</span>';
+    document.body.appendChild(replacement);
+  }
 
+  // One frame for that to paint, then go. Reloading in the same tick would
+  // navigate before the cover was ever shown.
+  requestAnimationFrame(() => {
+    // A different seed is a different ocean, and a reload is the cleanest way
+    // to rebuild every system that derives from it. The species is dropped with
+    // the rest of the hash so a new ocean also deals a new animal.
+    location.hash = "";
+    location.reload();
+  });
+}
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "n" && event.key !== "N") return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  newOcean();
+});
+
+/**
+ * Straight into the water. There is no menu.
+ *
+ * Choosing an animal used to be the first thing that happened, from a card with
+ * a name and a sentence on it. Animals can now be swapped mid-swim, which does
+ * that job better — you pick by watching one swim rather than by reading about
+ * it — and what is left of the menu is a door in front of the thing people came
+ * to see. `#species=` still names one directly for a link.
+ */
 const named = requestedSpecies();
+adoptSpecies(named ? speciesById(named) : SPECIES[Math.floor(Math.random() * SPECIES.length)]!);
 
-if (named) {
-  // A directly linked animal, e.g. #species=manta. Skips the menu.
-  startRoot.remove();
-  adoptSpecies(speciesById(named));
-} else if (isAmbientMode()) {
-  // Unattended display: no menu, no choice to make, just start swimming.
-  startRoot.remove();
-  adoptSpecies(SPECIES[Math.floor(Math.random() * SPECIES.length)]!);
+if (isAmbientMode()) {
+  // Unattended display: start the overlay already faded rather than having it
+  // sit there for the first few seconds of an empty room.
   hud.setAmbient();
 } else {
-  void showStartScreen({
-    root: startRoot,
-    choicesHost: document.getElementById("start-choices")!,
-    reseedButton: document.getElementById("start-reseed")!,
-    onReseed: () => {
-      // Put the loading screen back up *before* navigating. The white flash on
-      // a reload comes from the browser painting the new document before it has
-      // any styles, and nothing the new page does can prevent what is shown
-      // while the old one is still on screen. Since both ends of the navigation
-      // now show the same gradient, there is no visible seam across it.
-      const boot = document.getElementById("boot");
-      if (boot) {
-        boot.dataset.done = "false";
-      } else {
-        // Already removed, so rebuild the same thing from the inline styles.
-        const replacement = document.createElement("div");
-        replacement.id = "boot";
-        replacement.innerHTML = '<span class="boot__word">Currents</span>';
-        document.body.appendChild(replacement);
-      }
-
-      // One frame for that to paint, then go. Reloading in the same tick would
-      // navigate before the cover was ever shown.
-      requestAnimationFrame(() => {
-        // A different seed is a different ocean; a reload is the cleanest way
-        // to rebuild every system that derives from it.
-        location.hash = "";
-        location.reload();
-      });
-    },
-  }).then(adoptSpecies);
+  titleCard.show();
 }
 
 // Dev-only inspection handle. Stripped from production builds, and the only

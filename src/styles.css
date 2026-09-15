@@ -132,135 +132,59 @@ body {
   white-space: pre;
 }
 
-/* -- Start screen --------------------------------------------------------- */
+/* -- Title card ------------------------------------------------------------ */
 
-.start {
+/*
+  Shown once over the opening swim, then gone. Not a screen — the ocean is
+  already moving behind it and nothing is waiting on it being dismissed.
+*/
+.title-card {
   position: fixed;
   inset: 0;
   display: grid;
-  place-items: center;
+  place-content: center;
+  justify-items: center;
   padding: 1.5rem;
-  background: radial-gradient(
-    ellipse at 50% 40%,
-    rgba(6, 28, 44, 0.55) 0%,
-    rgba(3, 16, 26, 0.92) 70%
-  );
-  backdrop-filter: blur(2px);
-  transition: opacity 1s ease;
-}
-
-.start[data-dismissed="true"] {
-  opacity: 0;
   pointer-events: none;
+  opacity: 0;
+  /* In gently, out gently; neither should be the thing you notice. */
+  transition: opacity 1.2s ease;
 }
 
-.start__inner {
-  width: min(62rem, 100%);
-  text-align: center;
+.title-card[data-show="true"] {
+  opacity: 1;
 }
 
-.start__mark {
+.title-card__mark {
   display: block;
   width: clamp(9rem, 26vw, 15rem);
   height: auto;
-  margin: 0 auto clamp(0.6rem, 2vw, 1.1rem);
+  margin-bottom: clamp(0.6rem, 2vw, 1.1rem);
   /* Sits it on the water rather than in front of it. */
   filter: drop-shadow(0 6px 22px rgb(0 0 0 / 45%));
 }
 
-/* Short viewports need the room for the animal picker more than for a crest. */
+.title-card__word {
+  margin: 0;
+  font-size: clamp(2rem, 7vw, 3.6rem);
+  font-weight: 300;
+  letter-spacing: 0.16em;
+  /* Tracking adds the gap after the last letter too; this recentres it. */
+  text-indent: 0.16em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 18px rgb(0 0 0 / 50%);
+}
+
+/* Short viewports have little enough water to look at as it is. */
 @media (max-height: 560px) {
-  .start__mark {
+  .title-card__mark {
     display: none;
   }
 }
 
-.start__title {
-  margin: 0;
-  font-size: clamp(2.6rem, 9vw, 5rem);
-  font-weight: 300;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.start__sub {
-  margin: 0.5rem 0 clamp(1.6rem, 5vw, 2.8rem);
-  color: var(--ink-dim);
-  font-size: clamp(0.9rem, 2.2vw, 1.05rem);
-  font-weight: 300;
-}
-
-.start__choices {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: 0.85rem;
-  margin-bottom: 1.6rem;
-}
-
-.choice {
-  appearance: none;
-  padding: 1.15rem 1rem;
-  background: var(--glass);
-  border: 1px solid var(--edge);
-  border-radius: 0.75rem;
-  color: var(--ink);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    transform 0.25s ease,
-    border-color 0.25s ease,
-    background 0.25s ease;
-}
-
-.choice:hover,
-.choice:focus-visible {
-  transform: translateY(-3px);
-  border-color: rgba(160, 214, 232, 0.55);
-  background: rgba(14, 44, 64, 0.72);
-  outline: none;
-}
-
-.choice__name {
-  display: block;
-  font-size: 1rem;
-  font-weight: 500;
-  margin-bottom: 0.3rem;
-}
-
-.choice__blurb {
-  display: block;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--ink-dim);
-  font-weight: 300;
-}
-
-.start__reseed {
-  appearance: none;
-  background: none;
-  border: none;
-  color: var(--ink-dim);
-  font-family: inherit;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.4rem;
-  transition: color 0.25s ease;
-}
-
-.start__reseed:hover,
-.start__reseed:focus-visible {
-  color: var(--ink);
-  outline: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .hud,
-  .start,
-  .choice {
+  .title-card {
     transition-duration: 0.01ms;
   }
 }

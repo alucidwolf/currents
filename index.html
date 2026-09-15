@@ -179,10 +179,11 @@
         <span><b>Drag</b> to look around</span>
         <span><b>Right-hold</b> or <b>arrows</b> to steer</span>
         <span><b>Scroll</b> to zoom</span>
+        <span><b>1&ndash;4</b> or <b>Tab</b> to change animal</span>
       </div>
       <div class="hud__meta">
         <span id="hud-seed"></span>
-        <span class="hud__dim">1&ndash;4 or Tab animal &middot; H hints &middot; F stats</span>
+        <span class="hud__dim">N new ocean &middot; H hints &middot; F stats</span>
       </div>
     </div>
 
@@ -195,28 +196,20 @@
 
     <pre id="stats" class="stats" hidden></pre>
 
-    <div id="start" class="start">
-      <div class="start__inner">
-        <!--
-          The mark with its cream field lifted out, so it sits on the water
-          rather than on a pale tile. Decorative: the title beneath already
-          names the game, so announcing it twice helps nobody.
-        -->
-        <img
-          class="start__mark"
-          src="/logo-mark.png"
-          alt=""
-          width="544"
-          height="380"
-          decoding="async"
-        />
-        <h1 class="start__title">Currents</h1>
-        <p class="start__sub">Pick something to be. Then just drift.</p>
-        <div id="start-choices" class="start__choices"></div>
-        <button id="start-reseed" class="start__reseed" type="button">
-          New ocean
-        </button>
-      </div>
+    <!--
+      Shown once over the opening swim, then gone. With no menu this is the only
+      place the game says its own name.
+    -->
+    <div id="title-card" class="title-card">
+      <img
+        class="title-card__mark"
+        src="/logo-mark.png"
+        alt=""
+        width="544"
+        height="380"
+        decoding="async"
+      />
+      <h1 class="title-card__word">Currents</h1>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
