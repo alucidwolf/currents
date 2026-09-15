@@ -142,6 +142,56 @@ loading screen is far worse than an early one.
 paint, and only then reloads. Both ends of the navigation now show the same
 gradient, so there is no seam across it.
 
+## Deploying to GitHub Pages
+
+Pushing to `main` builds and publishes the site. The workflow is
+`.github/workflows/deploy.yml`, and it runs all four headless checks before it
+publishes anything — the build passing is not on its own a reason to deploy.
+
+**One setting has to be changed by hand**, once:
+
+> **Settings → Pages → Build and deployment → Source**: change *Deploy from a
+> branch* to **GitHub Actions**.
+
+Until that is switched over, the workflow runs green and the deploy step fails
+with a 404 from the Pages API, which is a confusing way to be told about a
+dropdown. Then push to `main`, watch the run in **Actions**, and the site appears
+at `https://<owner>.github.io/<repo>/`.
+
+Worth knowing:
+
+- **A free plan only serves Pages from a public repository.** On a private one
+  the workflow succeeds and the site 404s. Pro and above can publish privately.
+- **Actions must be enabled** — *Settings → Actions → General → Allow all
+  actions and reusable workflows*.
+- **The first deploy may wait for approval.** Publishing uses a `github-pages`
+  environment, which GitHub creates on the first run; if it has protection rules
+  the job pauses until someone approves it.
+- If the deploy step fails on permissions, check *Settings → Actions → General →
+  Workflow permissions*. The workflow asks for what it needs explicitly, so this
+  normally does not matter, but an organisation policy can override it.
+- **A custom domain needs no change here.** The base path comes from what the
+  Pages API reports, so adding one moves the site to the root and the next
+  build follows it.
+
+### The base path is the thing that breaks
+
+A project site is served from `/<repo>/`, not from `/`. Everything this page
+references is root-relative, so built with the wrong base every asset 404s and
+you get a blank screen with nothing in the console that names the cause.
+
+`vite.config.ts` derives the base rather than hardcoding it: the workflow passes
+what the Pages API reports, falling back to the repository name from the
+environment, falling back to `/` locally. A written-down `/currents/` would break
+quietly the moment the repository was renamed or forked.
+
+To check a production build the way it will actually be served:
+
+```sh
+BASE_PATH=/currents npm run build && npx vite preview --port 4173
+# then open http://localhost:4173/currents/
+```
+
 ## Brand assets
 
 `brand/currents-logo.jpg` is the original artwork; everything in `public/` is

@@ -1,0 +1,75 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # So a deploy can be re-run from the Actions tab without an empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  # Required by deploy-pages: it authenticates to Pages with a short-lived
+  # OIDC token rather than a stored secret.
+  id-token: write
+
+# One deploy at a time, and never cancel one that has started — a half-finished
+# deployment would leave the live site in whatever state it got to.
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The headless checks, before anything is published. They take seconds and
+      # each one exists because something shipped broken: animals you could see
+      # through, controls that went the wrong way, a camera under the seabed, an
+      # autopilot that only turned one way. None of that is visible in a build
+      # log, so the build passing is not on its own a reason to deploy.
+      - name: Check the animals are solid
+        run: npm run verify:bodies
+
+      - name: Check the controls and camera
+        run: npm run verify:steering
+
+      - name: Check the seabed is worth swimming over
+        run: npm run verify:reef
+
+      - name: Check the ambient wander
+        run: npm run verify:wander
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      # Typechecks first, then bundles. BASE_PATH comes from GitHub rather than
+      # being written down, so this keeps working if the repository is renamed.
+      - name: Build
+        run: npm run build
+        env:
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
