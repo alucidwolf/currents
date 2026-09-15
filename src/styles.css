@@ -132,6 +132,192 @@ body {
   white-space: pre;
 }
 
+/* -- Animal picker --------------------------------------------------------- */
+
+/*
+  The HUD is pointer-transparent so it never swallows a drag meant for the
+  ocean; this is the one thing in it you are supposed to be able to hit.
+*/
+.animal-trigger {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.9rem 0.5rem 0.7rem;
+  background: var(--glass);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition:
+    border-color 0.25s ease,
+    background 0.25s ease,
+    transform 0.25s ease;
+}
+
+.animal-trigger:hover,
+.animal-trigger:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(160, 214, 232, 0.55);
+  background: rgba(14, 44, 64, 0.78);
+  outline: none;
+}
+
+/* A ray in outline: the same animal as the mark, at a size where nothing but a
+   silhouette would survive anyway. */
+.animal-trigger__icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  background: currentcolor;
+  opacity: 0.75;
+  clip-path: polygon(
+    50% 0%,
+    72% 22%,
+    100% 58%,
+    76% 52%,
+    58% 100%,
+    50% 64%,
+    42% 100%,
+    24% 52%,
+    0% 58%,
+    28% 22%
+  );
+}
+
+.animal-trigger__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.15;
+}
+
+.animal-trigger__caption {
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.animal-trigger__name {
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.picker {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  /* Only enough to lift the panel off the water. Blacking the ocean out would
+     make this a screen, and it is not one — the swim is still going. */
+  background: rgba(4, 18, 30, 0.42);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  transition: opacity 0.24s ease;
+}
+
+.picker[data-show="true"] {
+  opacity: 1;
+}
+
+.picker[data-show="true"] .picker__panel {
+  transform: none;
+}
+
+.picker__panel {
+  /* A width, not just a maximum: centring shrinks the panel to its contents,
+     and the card grid will happily collapse to one column to oblige. */
+  width: min(56rem, 100%);
+  padding: clamp(1.2rem, 4vw, 1.9rem);
+  background: rgba(8, 30, 45, 0.82);
+  border: 1px solid var(--edge);
+  border-radius: 1.1rem;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
+  /* Rises very slightly into place, so it arrives rather than appears. */
+  transform: translateY(0.6rem);
+  transition: transform 0.28s ease;
+}
+
+.picker__title {
+  margin: 0 0 clamp(0.9rem, 3vw, 1.3rem);
+  font-size: clamp(1rem, 3vw, 1.2rem);
+  font-weight: 300;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.picker__choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+}
+
+.picker__card {
+  position: relative;
+  appearance: none;
+  padding: 1rem 0.95rem;
+  background: var(--glass);
+  border: 1px solid var(--edge);
+  border-radius: 0.75rem;
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.25s ease,
+    border-color 0.25s ease,
+    background 0.25s ease;
+}
+
+.picker__card:hover,
+.picker__card:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(160, 214, 232, 0.55);
+  background: rgba(14, 44, 64, 0.72);
+  outline: none;
+}
+
+.picker__card[data-current="true"] {
+  border-color: rgba(160, 214, 232, 0.72);
+  background: rgba(22, 60, 82, 0.78);
+}
+
+.picker__key {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.7rem;
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+  opacity: 0.7;
+}
+
+.picker__name {
+  display: block;
+  font-size: 0.98rem;
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+}
+
+.picker__blurb {
+  display: block;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+.picker__foot {
+  margin: clamp(0.9rem, 3vw, 1.2rem) 0 0;
+  font-size: 0.74rem;
+  color: var(--ink-dim);
+  opacity: 0.8;
+}
+
 /* -- Title card ------------------------------------------------------------ */
 
 /*

@@ -45,6 +45,16 @@ export interface Input extends InputState {
   consume(): void;
   /** Advance the idle timer. Any input resets it to zero. */
   tick(dt: number): void;
+  /**
+   * Hand the arrow keys to an overlay, or take them back.
+   *
+   * Only one thing can own them at a time: with a picker open, arrows move
+   * between its choices, and the animal steering off in the background while
+   * you read a menu is nobody's intention. Turning this off also drops whatever
+   * is currently held, so a key still down when the overlay opened does not
+   * come back the moment it closes.
+   */
+  setSteeringEnabled(enabled: boolean): void;
   dispose(): void;
 }
 
@@ -69,6 +79,7 @@ export function createInput(target: HTMLElement): Input {
 
   const held = { left: false, right: false, up: false, down: false };
   type Arrow = keyof typeof held;
+  let steeringEnabled = true;
 
   const ARROWS: Record<string, Arrow> = {
     ArrowLeft: "left",
@@ -154,6 +165,8 @@ export function createInput(target: HTMLElement): Input {
     // Leave modified arrows alone — Alt+Left is the browser's back button, and
     // taking it over would be a genuinely annoying thing for a page to do.
     if (!arrow || event.altKey || event.ctrlKey || event.metaKey) return;
+    // An overlay has the keyboard; let the arrows through to it untouched.
+    if (!steeringEnabled) return;
 
     held[arrow] = true;
     // Otherwise the page scrolls under the canvas on every turn.
@@ -240,6 +253,13 @@ export function createInput(target: HTMLElement): Input {
       if (wantY === 0 && Math.abs(state.steerY) < 0.004) state.steerY = 0;
 
       state.keySteering = state.steerX !== 0 || state.steerY !== 0;
+    },
+    setSteeringEnabled(enabled: boolean) {
+      steeringEnabled = enabled;
+      // Dropping the held keys rather than remembering them: the eased axes
+      // then unwind on their own, so the animal finishes its turn gently
+      // instead of stopping dead the instant an overlay opens.
+      if (!enabled) releaseKeys();
     },
     dispose() {
       target.removeEventListener("pointerdown", onPointerDown);

@@ -179,11 +179,53 @@
         <span><b>Drag</b> to look around</span>
         <span><b>Right-hold</b> or <b>arrows</b> to steer</span>
         <span><b>Scroll</b> to zoom</span>
-        <span><b>1&ndash;4</b> or <b>Tab</b> to change animal</span>
+        <span><b>Tab</b> or the button below to change animal</span>
       </div>
       <div class="hud__meta">
         <span id="hud-seed"></span>
+
+        <!--
+          The visible way to change animal. The number keys do the same thing
+          and are shown on the cards, but a control nobody can see is not a way
+          to change animal, it is a thing you have to already know.
+        -->
+        <button
+          id="animal-trigger"
+          class="animal-trigger"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="picker"
+        >
+          <span class="animal-trigger__icon" aria-hidden="true"></span>
+          <span class="animal-trigger__text">
+            <span class="animal-trigger__caption">Swimming as</span>
+            <span id="animal-trigger-label" class="animal-trigger__name"></span>
+          </span>
+        </button>
+
         <span class="hud__dim">N new ocean &middot; H hints &middot; F stats</span>
+      </div>
+    </div>
+
+    <!--
+      Opened on purpose and closed on almost anything. The ocean keeps moving
+      behind it — nothing here is waiting to be dismissed.
+    -->
+    <div
+      id="picker"
+      class="picker"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Choose an animal"
+      hidden
+    >
+      <div class="picker__panel">
+        <h2 class="picker__title">Be something else</h2>
+        <div id="picker-choices" class="picker__choices"></div>
+        <p class="picker__foot">
+          The swim carries on — you keep your place, heading and speed.
+        </p>
       </div>
     </div>
 

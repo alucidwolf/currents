@@ -1,9 +1,10 @@
 # Currents
 
 A calm, procedurally generated ocean to drift through in the browser. It starts
-swimming the moment it loads — no menu, no button — and you can change animal
-mid-swim, steer, or leave it alone entirely. Left alone it explores on its own
-indefinitely, which makes it usable as a screensaver on a spare monitor.
+swimming the moment it loads — nothing to click through first — and you can
+change animal mid-swim, steer, or leave it alone entirely. Left alone it
+explores on its own indefinitely, which makes it usable as a screensaver on a
+spare monitor.
 
 No score, no timer, no fail state.
 
@@ -33,7 +34,8 @@ npm run dev      # http://127.0.0.1:5173
 | **Scroll** | Zoom in and out. |
 | **Right-hold** | Steer: the animal curves toward your cursor. Release and it goes back to wandering on its own. |
 | **Arrow keys** | Steer without the mouse — left and right turn, up and down climb and dive. Speed never changes; the keys only change where the animal is pointing. Let go and it levels off and goes back to wandering. |
-| **1**–**4**, **Tab** | Swap animal mid-swim. Numbers pick one outright, Tab walks the list (Shift+Tab backwards). Position, heading and speed all carry over, so the new animal picks up exactly where the last one was. |
+| **Swimming as…** | The button bottom-centre opens the animal picker. The ocean keeps moving behind it, and choosing is instant — position, heading and speed all carry over, so the new animal picks up exactly where the last one was. |
+| **1**–**4**, **Tab** | The same thing without opening anything. Numbers pick one outright, Tab walks the list (Shift+Tab backwards). |
 | **N** | A new ocean. Different seed, different animal. |
 | **H** | Toggle the control hints. |
 | **F** | Toggle the stats overlay (fps, draw calls, chunk count, depth). |

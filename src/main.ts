@@ -24,6 +24,7 @@ import { Terrain } from "./world/terrain";
 import { Water } from "./world/water";
 import { Hud } from "./ui/hud";
 import { isAmbientMode, requestedSpecies } from "./ui/launch";
+import { SpeciesPicker } from "./ui/speciesPicker";
 import { TitleCard } from "./ui/titleCard";
 
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
@@ -74,6 +75,10 @@ const rig = new CameraRig(window.innerWidth / window.innerHeight, terrain);
 const input = createInput(canvas);
 const hud = new Hud();
 const titleCard = new TitleCard();
+const picker = new SpeciesPicker(
+  (chosen) => adoptSpecies(chosen, true),
+  (owned) => input.setSteeringEnabled(!owned),
+);
 
 scene.add(swimmer.object);
 
@@ -145,6 +150,9 @@ function adoptSpecies(chosen: SpeciesDef, announce = false): void {
   // player had zoomed to.
   rig.ensureRoomFor(chosen.viewDistance);
   rememberSpecies(chosen.id);
+  // However the animal was changed — card, number key or Tab — the button and
+  // the marked card follow it.
+  picker.setCurrent(chosen);
 
   if (announce) {
     swapSettle = 0;
@@ -163,6 +171,9 @@ function bindSpeciesKeys(): void {
   window.addEventListener("keydown", (event) => {
     if (!species) return;
     if (event.altKey || event.ctrlKey || event.metaKey) return;
+    // While the picker is open it owns the keyboard: Tab walks its cards and
+    // the numbers would be fighting whatever has focus.
+    if (picker.isOpen) return;
 
     if (event.key === "Tab") {
       event.preventDefault();
