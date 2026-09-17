@@ -13,9 +13,10 @@ import type { Input } from "./input";
  * is itself eased, which is what stops the world from whipping around during a
  * hard turn. The result trails like a camera boat rather than a rigid mount.
  *
- * Left-drag orbits, the wheel zooms, and after a spell of no input the whole
- * rig begins a very slow drift of its own. That last part is the difference
- * between "a fixed view of a fish" and something worth leaving on a monitor.
+ * It sits behind the animal. Left-hold-and-drag moves it somewhere else, and it
+ * stays there, turning with the animal, until the right button is pressed —
+ * which swings it back behind. The wheel zooms, and after a spell of no input
+ * the height breathes slowly, so an unattended screen is never quite still.
  */
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
@@ -30,6 +31,8 @@ export class CameraRig {
   private readonly target = new THREE.Vector3();
   private readonly desiredPosition = new THREE.Vector3();
   private idlePhase = 0;
+  /** True while swinging back behind the animal after a right-button press. */
+  private recentering = false;
   /**
    * False until the first update has put the camera anywhere.
    *
@@ -142,12 +145,34 @@ export class CameraRig {
       );
     }
 
+    // --- Back behind the animal ----------------------------------------------
+    // The right button asks for it. Eased rather than snapped, so the view
+    // swings round instead of cutting, and a drag during the swing hands the
+    // camera straight back to the player.
+    if (input.recenter) this.recentering = true;
+    if (input.dragX !== 0 || input.dragY !== 0) this.recentering = false;
+    if (this.recentering) {
+      const ease = 1 - Math.exp(-dt / CAMERA.recenterLag);
+      const yawGap = angleDelta(this.orbitYaw, CAMERA.startYaw);
+      const pitchGap = CAMERA.startPitch - this.orbitPitch;
+      this.orbitYaw += yawGap * ease;
+      this.orbitPitch += pitchGap * ease;
+      if (Math.abs(yawGap) < 0.002 && Math.abs(pitchGap) < 0.002) {
+        // Settle exactly, and forget how many whole turns the drag wound up.
+        this.orbitYaw = CAMERA.startYaw;
+        this.orbitPitch = CAMERA.startPitch;
+        this.recentering = false;
+      }
+    }
+
     // --- Idle drift ----------------------------------------------------------
     // Only after a genuine pause, and cancelled by the first flicker of input.
-    if (CAMERA.idleEnabled && input.idleTime > CAMERA.idleDelay) {
+    // It only ever breathes the height. It used to circle the animal as well,
+    // but the camera belongs behind the animal unless the player has moved it,
+    // and a screensaver that wanders round to its face breaks that on its own.
+    if (CAMERA.idleEnabled && input.idleTime > CAMERA.idleDelay && !this.recentering) {
       // Ease in over a few seconds so the drift never visibly "switches on".
       const ramp = Math.min(1, (input.idleTime - CAMERA.idleDelay) / 4);
-      this.orbitYaw += CAMERA.idleDriftSpeed * ramp * dt;
 
       this.idlePhase += dt * 0.055;
       const driftPitch = 0.22 + Math.sin(this.idlePhase) * 0.26;

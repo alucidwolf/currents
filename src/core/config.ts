@@ -278,9 +278,14 @@ export const CAMERA = {
    */
   floorClearance: 2.8,
   airClearance: 1.4,
-  /** Idle orbital drift — the screensaver camera. */
+  /**
+   * Seconds the swing back behind the animal takes to mostly settle, after the
+   * right button is pressed. Quick enough to be an answer to the press, slow
+   * enough to read as the camera turning rather than cutting.
+   */
+  recenterLag: 0.28,
+  /** Idle drift — the screensaver camera. Height only; it never circles. */
   idleDelay: 20,
-  idleDriftSpeed: 0.035,
   idleEnabled: true,
 } as const;
 

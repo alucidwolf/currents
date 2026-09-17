@@ -30,9 +30,9 @@ npm run dev      # http://127.0.0.1:5173
 
 | Input | Effect |
 | --- | --- |
-| **Left-hold and drag** | Orbit the camera. It trails lazily through turns rather than snapping, and stays above the seabed and under the surface however far you swing it. |
+| **Left-hold and drag** | Orbit the camera. The camera lives behind the animal; moved, it stays where you put it and turns with the animal. It trails lazily through turns rather than snapping, and stays above the seabed and under the surface however far you swing it. |
 | **Scroll** | Zoom in and out. |
-| **Right-hold** | Steer: the animal curves toward your cursor. Release and it goes back to wandering on its own. |
+| **Right-hold** | Steer: the animal curves toward your cursor. Release and it goes back to wandering on its own. Pressing the right button also swings the camera back behind the animal straight away — even a quick click, which does not steer. |
 | **Arrow keys** | Steer without the mouse — left and right turn, up and down climb and dive. Speed never changes; the keys only change where the animal is pointing. Let go and it levels off and goes back to wandering. |
 | **Swimming as…** | The button bottom-centre opens the animal picker. The ocean keeps moving behind it, and choosing is instant — position, heading and speed all carry over, so the new animal picks up exactly where the last one was. |
 | **1**–**4**, **Tab** | The same thing without opening anything. Numbers pick one outright, Tab walks the list (Shift+Tab backwards). |

@@ -23,6 +23,14 @@ export interface InputState {
   wheel: number;
   /** True while the right button is held: the swimmer is under player command. */
   steering: boolean;
+  /**
+   * True on the frame the right button went down, held or not.
+   *
+   * Steering waits for a hold; putting the camera back behind the animal does
+   * not. Reaching for the steering button is the moment to see where you are
+   * going, and turning the camera costs nothing if it turns out to be a click.
+   */
+  recenter: boolean;
   /** Smoothed arrow-key steering: -1 is left/down, +1 is right/up. */
   steerX: number;
   steerY: number;
@@ -65,6 +73,7 @@ export function createInput(target: HTMLElement): Input {
     dragY: 0,
     wheel: 0,
     steering: false,
+    recenter: false,
     steerX: 0,
     steerY: 0,
     keySteering: false,
@@ -119,6 +128,7 @@ export function createInput(target: HTMLElement): Input {
       // Steering itself starts in `tick`, once the button has been held.
       steerPointerId = event.pointerId;
       steerHeldFor = 0;
+      state.recenter = true;
       target.setPointerCapture(event.pointerId);
       event.preventDefault();
     }
@@ -227,6 +237,9 @@ export function createInput(target: HTMLElement): Input {
     get steering() {
       return state.steering;
     },
+    get recenter() {
+      return state.recenter;
+    },
     get steerX() {
       return state.steerX;
     },
@@ -249,6 +262,7 @@ export function createInput(target: HTMLElement): Input {
       state.dragX = 0;
       state.dragY = 0;
       state.wheel = 0;
+      state.recenter = false;
     },
     tick(dt: number) {
       state.idleTime += dt;
