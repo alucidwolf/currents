@@ -284,6 +284,19 @@ export const CAMERA = {
   idleEnabled: true,
 } as const;
 
+export const POINTER = {
+  /**
+   * Seconds a mouse button must be held before it does anything.
+   *
+   * Both gestures are holds, not clicks: left-hold looks around, right-hold
+   * steers. Without this a plain click still counted — a right click leaned the
+   * animal for as long as the button happened to be down, and a left click with
+   * the slightest wobble nudged the camera. Long enough to rule out a click,
+   * short enough that a deliberate hold does not feel like it is waiting.
+   */
+  holdDelay: 0.2,
+} as const;
+
 /**
  * The diorama look: shallow focus, a warm/cool split, and a vignette.
  *

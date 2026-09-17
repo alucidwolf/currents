@@ -1,8 +1,9 @@
 /**
  * Pointer and key input.
  *
- * Two pointer gestures, and they are independent: left-drag orbits the camera,
- * right-hold steers the animal. Both can run at once. Everything else the
+ * Two pointer gestures, and they are independent: left-hold-and-drag orbits the
+ * camera, right-hold steers the animal. Both can run at once, and both are
+ * holds: a plain click on either button does nothing. Everything else the
  * browser wants to do with those buttons — context menus, text selection,
  * drag-to-scroll on touch — is suppressed.
  *
@@ -12,7 +13,7 @@
  * animal should lean into a turn rather than snap into one.
  */
 
-import { SWIM } from "../core/config";
+import { POINTER, SWIM } from "../core/config";
 
 export interface InputState {
   /** Accumulated left-drag since the last frame consumed it, in pixels. */
@@ -74,6 +75,10 @@ export function createInput(target: HTMLElement): Input {
 
   let orbitPointerId: number | null = null;
   let steerPointerId: number | null = null;
+  // How long each button has been down. A gesture only takes effect once its
+  // button has been held past `POINTER.holdDelay`, so a click does nothing.
+  let orbitHeldFor = 0;
+  let steerHeldFor = 0;
   let lastX = 0;
   let lastY = 0;
 
@@ -105,13 +110,15 @@ export function createInput(target: HTMLElement): Input {
 
     if (event.button === 0 && orbitPointerId === null) {
       orbitPointerId = event.pointerId;
+      orbitHeldFor = 0;
       lastX = event.clientX;
       lastY = event.clientY;
       target.setPointerCapture(event.pointerId);
       event.preventDefault();
     } else if (event.button === 2 && steerPointerId === null) {
+      // Steering itself starts in `tick`, once the button has been held.
       steerPointerId = event.pointerId;
-      state.steering = true;
+      steerHeldFor = 0;
       target.setPointerCapture(event.pointerId);
       event.preventDefault();
     }
@@ -122,8 +129,13 @@ export function createInput(target: HTMLElement): Input {
     updateNdc(event);
 
     if (event.pointerId === orbitPointerId) {
-      state.dragX += event.clientX - lastX;
-      state.dragY += event.clientY - lastY;
+      // Movement before the hold registers is dropped rather than saved up, so
+      // the camera starts from where the cursor is instead of jumping to catch
+      // up with it.
+      if (orbitHeldFor >= POINTER.holdDelay) {
+        state.dragX += event.clientX - lastX;
+        state.dragY += event.clientY - lastY;
+      }
       lastX = event.clientX;
       lastY = event.clientY;
     }
@@ -132,9 +144,11 @@ export function createInput(target: HTMLElement): Input {
   const release = (event: PointerEvent) => {
     if (event.pointerId === orbitPointerId) {
       orbitPointerId = null;
+      orbitHeldFor = 0;
     }
     if (event.pointerId === steerPointerId) {
       steerPointerId = null;
+      steerHeldFor = 0;
       state.steering = false;
     }
     if (target.hasPointerCapture?.(event.pointerId)) {
@@ -238,6 +252,12 @@ export function createInput(target: HTMLElement): Input {
     },
     tick(dt: number) {
       state.idleTime += dt;
+
+      if (orbitPointerId !== null) orbitHeldFor += dt;
+      if (steerPointerId !== null) {
+        steerHeldFor += dt;
+        state.steering = steerHeldFor >= POINTER.holdDelay;
+      }
 
       const wantX = (held.right ? 1 : 0) - (held.left ? 1 : 0);
       const wantY = (held.up ? 1 : 0) - (held.down ? 1 : 0);
