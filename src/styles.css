@@ -221,6 +221,13 @@ body {
   transition: opacity 0.24s ease;
 }
 
+/* `display: grid` above outranks the browser's own `[hidden]` rule, which left
+   a closed picker as an invisible full-screen layer swallowing every pointer
+   meant for the ocean. */
+.picker[hidden] {
+  display: none;
+}
+
 .picker[data-show="true"] {
   opacity: 1;
 }
