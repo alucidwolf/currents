@@ -1,13 +1,15 @@
 import * as THREE from "three";
 import "./styles.css";
 
-import { CAMERA, RENDER, SWIM } from "./core/config";
+import { Soundscape } from "./audio/soundscape";
+import { CAMERA, RENDER, SWIM, WORLD } from "./core/config";
 import { createLoop } from "./core/loop";
+import { forgetSwim, readSettings, readSwim, writeSettings, writeSwim } from "./core/memory";
 import { formatSeed, resolveWorldSeed } from "./core/rng";
 import { CameraRig } from "./control/cameraRig";
 import { createInput } from "./control/input";
 import { keyboardCommand } from "./control/steering";
-import { Swimmer } from "./creatures/swimmer";
+import { angleDelta, Swimmer } from "./creatures/swimmer";
 import type { SteerCommand } from "./creatures/swimmer";
 import { Wander } from "./creatures/wander";
 import { SPECIES, speciesById } from "./creatures/species";
@@ -24,6 +26,7 @@ import { Terrain } from "./world/terrain";
 import { Water } from "./world/water";
 import { Hud } from "./ui/hud";
 import { isAmbientMode, requestedSpecies } from "./ui/launch";
+import { SoundControl } from "./ui/soundControl";
 import { SpeciesPicker } from "./ui/speciesPicker";
 import { TitleCard } from "./ui/titleCard";
 
@@ -55,7 +58,11 @@ diorama.setSize(window.innerWidth, window.innerHeight, renderer.getPixelRatio())
 
 // -- world -------------------------------------------------------------------
 
-const worldSeed = resolveWorldSeed();
+// A remembered swim only counts in the ocean it was swum in. A link naming a
+// different seed opens that ocean fresh, and leaves the remembered one alone.
+const storedSwim = readSwim();
+const worldSeed = resolveWorldSeed(location.hash, storedSwim?.seed ?? null);
+const resumed = storedSwim?.seed === worldSeed ? storedSwim : null;
 const terrain = new Terrain(worldSeed);
 const water = new Water(scene);
 const caustics = makeCausticTerrainMaterial();
@@ -80,11 +87,29 @@ const picker = new SpeciesPicker(
   (owned) => input.setSteeringEnabled(!owned),
 );
 
+const settings = readSettings();
+const sound = new Soundscape(settings.muted, settings.volume);
+const soundControl = new SoundControl(sound, () =>
+  writeSettings({ muted: sound.muted, volume: sound.volume }),
+);
+
 scene.add(swimmer.object);
 
-// Drop the swimmer a sensible distance above whatever the seabed happens to be
-// doing at the origin of this particular world.
-swimmer.position.y = terrain.heightAt(0, 0) + 18;
+if (resumed) {
+  // Back where it was. The height is held inside the same bounds the swimmer
+  // keeps itself to, in case the record came from a version of the seabed
+  // that stood somewhere else.
+  const floor = terrain.heightAt(resumed.x, resumed.z) + SWIM.seabedClearance;
+  const ceiling = WORLD.surfaceY - SWIM.surfaceClearance;
+  swimmer.position.set(resumed.x, Math.min(ceiling, Math.max(floor, resumed.y)), resumed.z);
+  swimmer.yaw = resumed.yaw;
+  swimmer.pitch = resumed.pitch;
+  rig.restore(resumed.camera);
+} else {
+  // Drop the swimmer a sensible distance above whatever the seabed happens to
+  // be doing at the origin of this particular world.
+  swimmer.position.y = terrain.heightAt(0, 0) + 18;
+}
 swimmer.object.position.copy(swimmer.position);
 chunks.primeAround(swimmer.position);
 
@@ -117,7 +142,10 @@ const SWAP_SETTLE = 0.42;
 let swapSettle = 1;
 
 /**
- * Keep the current animal in the URL.
+ * Keep the ocean and the current animal in the URL.
+ *
+ * The seed is written even when the link did not name one, so a copied address
+ * is always this exact ocean.
  *
  * `replaceState` rather than assigning `location.hash`: assigning pushes a
  * history entry for every swap, so Back would walk you through each one instead
@@ -125,7 +153,8 @@ let swapSettle = 1;
  */
 function rememberSpecies(id: string): void {
   const parts = location.hash.replace(/^#/, "").split("&").filter(Boolean);
-  const kept = parts.filter((part) => !/^species=/i.test(part));
+  const kept = parts.filter((part) => !/^(?:seed|species)=/i.test(part));
+  kept.unshift(`seed=${formatSeed(worldSeed)}`);
   kept.push(`species=${id}`);
   history.replaceState(null, "", `#${kept.join("&")}`);
 }
@@ -157,6 +186,7 @@ function adoptSpecies(chosen: SpeciesDef, announce = false): void {
   if (announce) {
     swapSettle = 0;
     hud.announce(chosen.name);
+    sound.chime();
   }
 }
 
@@ -251,6 +281,61 @@ function keyCommand(): SteerCommand {
   );
 }
 
+// -- memory ------------------------------------------------------------------
+
+/** Seconds between saves of the swim while the page is open. */
+const SAVE_EVERY = 15;
+let saveTimer = 0;
+/** Set while leaving for a new ocean, so the swim being left is not saved back. */
+let leaving = false;
+
+function saveSwim(): void {
+  if (leaving || !species) return;
+  writeSwim({
+    seed: worldSeed,
+    species: species.id,
+    x: swimmer.position.x,
+    y: swimmer.position.y,
+    z: swimmer.position.z,
+    yaw: swimmer.yaw,
+    pitch: swimmer.pitch,
+    camera: rig.snapshot(),
+  });
+}
+
+// A closed tab, a reload, and a tab put in the background all save, so the
+// timer only has to cover a browser that is killed outright.
+window.addEventListener("pagehide", saveSwim);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) saveSwim();
+  sound.setHidden(document.hidden);
+});
+
+// -- sound -------------------------------------------------------------------
+
+/**
+ * Start the sound on the first touch of the page.
+ *
+ * Browsers refuse to play anything before the page has had a real input, so
+ * this is the earliest moment there is. Capture phase, so it still runs when
+ * something else stops the event going any further.
+ */
+function startSound(): void {
+  sound.start();
+  // The visibility listener only hears changes, so a page that is already
+  // hidden when sound starts has to be told.
+  sound.setHidden(document.hidden);
+  soundControl.refresh();
+  for (const type of ["pointerdown", "keydown", "wheel", "touchstart"]) {
+    window.removeEventListener(type, startSound, true);
+  }
+}
+for (const type of ["pointerdown", "keydown", "wheel", "touchstart"]) {
+  window.addEventListener(type, startSound, true);
+}
+
+let lastYaw = swimmer.yaw;
+
 // -- frame -------------------------------------------------------------------
 
 const loop = createLoop((dt, elapsed) => {
@@ -301,6 +386,20 @@ const loop = createLoop((dt, elapsed) => {
   rig.update(dt, input, swimmer);
 
   titleCard.update(dt);
+
+  const turnRate = dt > 0 ? Math.abs(angleDelta(lastYaw, swimmer.yaw)) / dt : 0;
+  lastYaw = swimmer.yaw;
+  sound.update(dt, {
+    depth: swimmer.depth,
+    speedRatio: swimmer.speed / SWIM.cruiseSpeed,
+    turnRate,
+  });
+
+  saveTimer += dt;
+  if (saveTimer >= SAVE_EVERY) {
+    saveTimer = 0;
+    saveSwim();
+  }
 
   hud.update(dt, input.idleTime, {
     fps: loop.fps,
@@ -378,7 +477,10 @@ function newOcean(): void {
   requestAnimationFrame(() => {
     // A different seed is a different ocean, and a reload is the cleanest way
     // to rebuild every system that derives from it. The species is dropped with
-    // the rest of the hash so a new ocean also deals a new animal.
+    // the rest of the hash so a new ocean also deals a new animal. The
+    // remembered swim goes too, or the reload would resume the ocean being left.
+    leaving = true;
+    forgetSwim();
     location.hash = "";
     location.reload();
   });
@@ -399,14 +501,18 @@ window.addEventListener("keydown", (event) => {
  * it — and what is left of the menu is a door in front of the thing people came
  * to see. `#species=` still names one directly for a link.
  */
-const named = requestedSpecies();
+const named =
+  requestedSpecies() ??
+  (resumed && SPECIES.some((entry) => entry.id === resumed.species) ? resumed.species : null);
 adoptSpecies(named ? speciesById(named) : SPECIES[Math.floor(Math.random() * SPECIES.length)]!);
 
 if (isAmbientMode()) {
   // Unattended display: start the overlay already faded rather than having it
   // sit there for the first few seconds of an empty room.
   hud.setAmbient();
-} else {
+} else if (!resumed) {
+  // A resumed swim is the same swim carrying on, so it does not get the logo
+  // again.
   titleCard.show();
 }
 
@@ -425,6 +531,8 @@ if (import.meta.env.DEV) {
     // exactly when you most want to pose the camera and look at one frame.
     renderer,
     diorama,
+    sound,
+    saveSwim,
   };
 }
 

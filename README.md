@@ -33,17 +33,19 @@ npm run dev      # http://127.0.0.1:5173
 | **Left-hold and drag** | Orbit the camera. It trails lazily through turns rather than snapping, and stays above the seabed and under the surface however far you swing it. |
 | **Scroll** | Zoom in and out. |
 | **Right-hold** | Steer: the animal curves toward your cursor. Release and it goes back to wandering on its own. |
-
-Both mouse gestures are holds. A button does nothing until it has been down for
-a fifth of a second (`POINTER.holdDelay`), so a plain click, left or right,
-never moves the camera or turns the animal.
 | **Arrow keys** | Steer without the mouse — left and right turn, up and down climb and dive. Speed never changes; the keys only change where the animal is pointing. Let go and it levels off and goes back to wandering. |
 | **Swimming as…** | The button bottom-centre opens the animal picker. The ocean keeps moving behind it, and choosing is instant — position, heading and speed all carry over, so the new animal picks up exactly where the last one was. |
 | **1**–**4**, **Tab** | The same thing without opening anything. Numbers pick one outright, Tab walks the list (Shift+Tab backwards). |
+| **Sound on**, volume | The pill bottom-right. Sound starts on your first click or key, because browsers allow nothing before one, and fades in over a few seconds. |
+| **M** | Sound on and off. |
 | **N** | A new ocean. Different seed, different animal. |
 | **H** | Toggle the control hints. |
 | **F** | Toggle the stats overlay (fps, draw calls, chunk count, depth). |
 | **P** | Toggle the diorama pass — depth of field, grade and vignette — to compare, or to claw back frame time. |
+
+Both mouse gestures are holds. A button does nothing until it has been down for
+a fifth of a second (`POINTER.holdDelay`), so a plain click, left or right,
+never moves the camera or turns the animal.
 
 The hints fade out on their own after a few seconds of stillness and come back
 when you move the mouse.
@@ -76,10 +78,48 @@ arrow carrying the animal 12.4 metres to the *left*.
 | Fragment | Effect |
 | --- | --- |
 | `#ambient` | Start with no overlay at all — no title card, and the hints already faded. **This is the link to leave open on a second monitor.** |
-| `#seed=abc123` | Rebuild a specific ocean exactly. The current seed is shown bottom-left. |
+| `#seed=abc123` | Rebuild a specific ocean exactly. The current seed is shown bottom-left, and is always written into the address, so a copied link is this ocean. |
 | `#species=manta` | Start as a named animal (`whale`, `turtle`, `manta`, `dolphin`) rather than a random one. Swapping animals in game rewrites this, so a reload keeps whichever one you are currently being. |
 
 Fragments combine: `#seed=reef7&species=manta`.
+
+## Remembering where you were
+
+Close the tab, come back tomorrow, and the swim carries on: the same ocean, the
+same animal, in the same place, heading the same way, with the camera framed
+the way you left it. A resumed swim does not replay the logo. Sound on or off
+and the volume are remembered too, and those carry across every ocean.
+
+The swim belongs to one ocean. Opening a link to a different seed starts that
+ocean from the beginning, and from then on it is the one remembered. **N**
+forgets the swim on purpose, so a new ocean really is new.
+
+The swim is saved every fifteen seconds, and whenever the tab is closed,
+reloaded or put in the background. What comes back out of storage is not
+trusted: a private window, a full or blocked disk, or a record from an older
+version all count as a first visit, and every field is checked before any of it
+is used, because one bad number read back as a position would put the animal
+nowhere. `npm run verify:memory` feeds it every kind of broken record it can
+think of (`src/core/memory.ts`).
+
+## Sound
+
+Everything you hear is synthesised in the browser from two noise buffers and a
+handful of oscillators — there are no audio files (`src/audio/soundscape.ts`).
+
+- A **deep hum** that gets darker and a little louder the deeper you go, and
+  swells slowly, like a long wave passing overhead.
+- A **surface wash**, a brighter hiss that only comes in over the top few metres.
+- A **glide**, the water moving past the body, which rises when the animal turns.
+- **Bubbles** now and then, in small clusters.
+- Rarely, a long low **call** from somewhere out in the fog, mostly echo.
+- Two soft notes when you change animal.
+
+All of it passes through one low-pass filter on the way out. Water takes the top
+off every sound in it, and that one filter does more to put you underwater than
+any of the layers does on its own. The noise loops are crossfaded at their ends
+so the hum never thumps where the buffer repeats, and sound stops while the tab
+is hidden.
 
 ## Art direction
 
@@ -455,13 +495,14 @@ should plateau rather than growing.
 
 ```
 src/
-  core/        seeded RNG, frame loop, and every tunable in config.ts
+  audio/       the synthesised soundscape
+  core/        seeded RNG, frame loop, what the page remembers, and every tunable in config.ts
   control/     pointer input, camera rig
   creatures/   body construction, swim shader, the player animal, the autopilot
   render/      the diorama pass: depth of field, grade, vignette
   world/       terrain, chunk streaming, decor, water, caustics, fish, motes
-  ui/          HUD, title card, and what the URL asks for
-tools/         headless wander verification
+  ui/          HUD, title card, sound control, and what the URL asks for
+tools/         headless checks: bodies, steering, reef, wander, memory
 ```
 
 Start with `src/core/config.ts` — if a number matters, it lives there.

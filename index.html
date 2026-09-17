@@ -204,7 +204,28 @@
           </span>
         </button>
 
-        <span class="hud__dim">N new ocean &middot; H hints &middot; F stats</span>
+        <div class="hud__end">
+          <!--
+            Sound starts on the first touch of the page, because browsers allow
+            nothing before one. The switch and slider are remembered.
+          -->
+          <div class="sound" role="group" aria-label="Sound">
+            <button id="sound-toggle" class="sound__toggle" type="button" aria-pressed="true">
+              sound on
+            </button>
+            <input
+              id="sound-volume"
+              class="sound__volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0.5"
+              aria-label="Volume"
+            />
+          </div>
+          <span class="hud__dim">M sound &middot; N new ocean &middot; H hints &middot; F stats</span>
+        </div>
       </div>
     </div>
 

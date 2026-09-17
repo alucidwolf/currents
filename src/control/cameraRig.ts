@@ -30,6 +30,15 @@ export class CameraRig {
   private readonly target = new THREE.Vector3();
   private readonly desiredPosition = new THREE.Vector3();
   private idlePhase = 0;
+  /**
+   * False until the first update has put the camera anywhere.
+   *
+   * The camera starts at the world origin. Easing from there was harmless while
+   * every swim also started at the origin, but a resumed swim can be a
+   * kilometre away, and the first second would be the camera flying across the
+   * ocean to catch up.
+   */
+  private placed = false;
 
   constructor(
     aspect: number,
@@ -94,6 +103,26 @@ export class CameraRig {
     if (this.distance < floor) this.distance = floor;
   }
 
+  /** The framing the player has chosen, for remembering between visits. */
+  snapshot(): { orbitYaw: number; orbitPitch: number; distance: number } {
+    return { orbitYaw: this.orbitYaw, orbitPitch: this.orbitPitch, distance: this.distance };
+  }
+
+  /** Put back a remembered framing, held inside the limits the drag obeys. */
+  restore(framing: { orbitYaw: number; orbitPitch: number; distance: number }): void {
+    this.orbitYaw = framing.orbitYaw;
+    this.orbitPitch = THREE.MathUtils.clamp(
+      framing.orbitPitch,
+      CAMERA.minPitch,
+      CAMERA.maxPitch,
+    );
+    this.distance = THREE.MathUtils.clamp(
+      framing.distance,
+      CAMERA.minDistance,
+      CAMERA.maxDistance,
+    );
+  }
+
   update(dt: number, input: Input, swimmer: Swimmer): void {
     // --- Player orbit --------------------------------------------------------
     if (input.dragX !== 0 || input.dragY !== 0) {
@@ -129,7 +158,11 @@ export class CameraRig {
     // Easing the *followed* heading rather than the camera position is what
     // makes turns feel unhurried without making the camera feel sluggish.
     const follow = 1 - Math.exp(-dt / CAMERA.followLag);
-    this.followYaw += angleDelta(this.followYaw, swimmer.yaw) * follow;
+    if (this.placed) {
+      this.followYaw += angleDelta(this.followYaw, swimmer.yaw) * follow;
+    } else {
+      this.followYaw = swimmer.yaw;
+    }
 
     // --- Place ---------------------------------------------------------------
     // Aim slightly ahead of the body so the animal sits low in frame with the
@@ -151,7 +184,12 @@ export class CameraRig {
     // A light positional ease on top absorbs the speed "breathing" so the
     // camera does not visibly pump back and forth.
     const ease = 1 - Math.exp(-dt / 0.16);
-    this.camera.position.lerp(this.desiredPosition, ease);
+    if (this.placed) {
+      this.camera.position.lerp(this.desiredPosition, ease);
+    } else {
+      this.camera.position.copy(this.desiredPosition);
+      this.placed = true;
+    }
 
     // Again after easing, and this is the one that actually guarantees it. The
     // lerp can cut a corner through ground that neither end was inside, and the

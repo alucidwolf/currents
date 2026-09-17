@@ -49,6 +49,9 @@ jobs:
       - name: Check the ambient wander
         run: npm run verify:wander
 
+      - name: Check a remembered swim is only resumed when it can be trusted
+        run: npm run verify:memory
+
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v5

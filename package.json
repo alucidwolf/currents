@@ -12,7 +12,8 @@
     "verify:wander": "esbuild tools/wander-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.wander-check.mjs && node tools/.wander-check.mjs",
     "verify:reef": "esbuild tools/reef-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.reef-check.mjs && node tools/.reef-check.mjs",
     "verify:bodies": "esbuild tools/body-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.body-check.mjs && node tools/.body-check.mjs",
-    "verify:steering": "esbuild tools/steering-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.steering-check.mjs && node tools/.steering-check.mjs"
+    "verify:steering": "esbuild tools/steering-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.steering-check.mjs && node tools/.steering-check.mjs",
+    "verify:memory": "esbuild tools/memory-check.ts --bundle --platform=node --format=esm --external:three --outfile=tools/.memory-check.mjs && node tools/.memory-check.mjs"
   },
   "dependencies": {
     "three": "^0.186.0"

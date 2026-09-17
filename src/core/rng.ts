@@ -46,19 +46,30 @@ export function pick<T>(rng: Rng, items: readonly T[]): T {
   return items[Math.floor(rng() * items.length) % items.length]!;
 }
 
+/** The seed named by `#seed=` in the URL, if there is a usable one. */
+export function seedFromHash(hash: string = location.hash): number | null {
+  const match = /(?:^|[#&])seed=([0-9a-zA-Z]+)/.exec(hash);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1]!, 36);
+  return Number.isFinite(parsed) && parsed >>> 0 !== 0 ? parsed >>> 0 : null;
+}
+
 /**
  * Resolve this session's world seed.
  *
- * `#seed=12345` in the URL reproduces a previous ocean exactly; otherwise a
- * fresh one is minted from the clock, so no two sessions match.
+ * `#seed=12345` in the URL reproduces a previous ocean exactly and always wins.
+ * Without one, the ocean the page remembers carries on. With neither, a fresh
+ * one is minted from the clock, so no two first visits match.
  */
-export function resolveWorldSeed(hash: string = location.hash): number {
-  const match = /(?:^|[#&])seed=([0-9a-zA-Z]+)/.exec(hash);
-  if (match) {
-    const parsed = Number.parseInt(match[1]!, 36);
-    if (Number.isFinite(parsed) && parsed !== 0) return parsed >>> 0;
-  }
-  return (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+export function resolveWorldSeed(
+  hash: string = location.hash,
+  remembered: number | null = null,
+): number {
+  return (
+    seedFromHash(hash) ??
+    remembered ??
+    ((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0 || 1)
+  );
 }
 
 /** Render a seed as the short string used in the URL and the HUD. */
