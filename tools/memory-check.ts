@@ -64,6 +64,7 @@ const good: SwimRecord = {
   yaw: 1.2,
   pitch: -0.1,
   camera: { orbitYaw: 0.3, orbitPitch: 0.42, distance: 14 },
+  time: 0.73,
 };
 
 // A good record survives the round trip exactly.
@@ -73,6 +74,23 @@ const good: SwimRecord = {
   check(JSON.stringify(readSwim(store)) === JSON.stringify(good), "a written swim reads back unchanged");
   forgetSwim(store);
   check(readSwim(store) === null, "a forgotten swim is gone");
+}
+
+// The time of day is optional. A swim saved before the day cycle, or with a
+// broken time, still resumes; only the clock starts fresh.
+for (const [name, time] of [
+  ["no time at all", undefined],
+  ["a time past the end of the day", 1.5],
+  ["a negative time", -0.2],
+  ["a time as text", "dusk"],
+] as const) {
+  const store = new MemoryStore();
+  const record: Record<string, unknown> = JSON.parse(JSON.stringify(good));
+  if (time === undefined) delete record.time;
+  else record.time = time;
+  store.setItem("currents-swim", JSON.stringify(record));
+  const read = readSwim(store);
+  check(read !== null && read.x === good.x && read.time === null, `resumes a swim with ${name}, without its time`);
 }
 
 // Every field broken in turn must reject the whole record.

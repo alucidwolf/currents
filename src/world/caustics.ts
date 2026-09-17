@@ -17,6 +17,8 @@ import { WORLD } from "../core/config";
 export interface CausticMaterial {
   material: THREE.Material;
   setTime(t: number): void;
+  /** The day cycle's colour and strength: bright ribbons by day, a faint moonlit shimmer at night. */
+  setDay(color: THREE.Color, strength: number): void;
 }
 
 const VERTEX_DECL = /* glsl */ `
@@ -104,6 +106,10 @@ export function makeCausticTerrainMaterial(): CausticMaterial {
     material,
     setTime(t: number) {
       uniforms.uCausticTime.value = t;
+    },
+    setDay(color: THREE.Color, strength: number) {
+      uniforms.uCausticColor.value.copy(color);
+      uniforms.uCausticStrength.value = strength;
     },
   };
 }

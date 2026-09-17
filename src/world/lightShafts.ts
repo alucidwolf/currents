@@ -120,6 +120,13 @@ export class LightShafts {
     scene.add(this.group);
   }
 
+  /** The day cycle's colour and strength. Near nothing at night, gold at the ends of the day. */
+  setDay(color: THREE.Color, opacity: number): void {
+    this.uniforms.uColor.value.copy(color);
+    this.uniforms.uOpacity.value = opacity;
+    this.group.visible = opacity > 0.002;
+  }
+
   update(dt: number, elapsed: number, swimmerPosition: THREE.Vector3): void {
     this.uniforms.uTime.value = elapsed;
 

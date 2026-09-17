@@ -10,3 +10,4 @@ Thumbs.db
 tools/.body-check.mjs
 tools/.steering-check.mjs
 tools/.memory-check.mjs
+tools/.day-check.mjs

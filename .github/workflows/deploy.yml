@@ -52,6 +52,9 @@ jobs:
       - name: Check a remembered swim is only resumed when it can be trusted
         run: npm run verify:memory
 
+      - name: Check the day keeps the approved look and never jumps
+        run: npm run verify:day
+
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v5

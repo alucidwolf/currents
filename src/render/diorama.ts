@@ -239,6 +239,21 @@ export class Diorama {
     this.blurB.setSize(halfWidth, halfHeight);
   }
 
+  /**
+   * Scale the warm highlights for the time of day.
+   *
+   * 1 is the approved grade. Sunrise and sunset push past it, and night takes
+   * it away entirely — warm highlights on moonlit water would read as a lamp.
+   */
+  setWarmth(scale: number): void {
+    const [r, g, b] = DIORAMA.warmHighlights;
+    (this.compositeMaterial.uniforms.uWarm!.value as THREE.Vector3).set(
+      r * scale,
+      g * scale,
+      b * scale,
+    );
+  }
+
   /** `focusDistance` is how far the subject is from the camera, in metres. */
   render(
     scene: THREE.Scene,

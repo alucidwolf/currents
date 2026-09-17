@@ -44,6 +44,11 @@ export interface SwimRecord {
     orbitPitch: number;
     distance: number;
   };
+  /**
+   * Time of day as a phase, 0 to 1. Null for a swim saved before there was a
+   * day cycle: that swim still resumes, it just starts the clock fresh.
+   */
+  time: number | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = { muted: false, volume: 0.5 };
@@ -110,7 +115,21 @@ export function readSwim(store: KeyValueStore | null = browserStore()): SwimReco
     return null;
   }
 
-  return { seed, species, x, y, z, yaw, pitch, camera: { orbitYaw, orbitPitch, distance } };
+  // Optional, and on its own terms: a bad time drops only the time. Losing an
+  // hour of the day is no reason to lose where the animal was.
+  const time = finite(raw.time, 0, 1);
+
+  return {
+    seed,
+    species,
+    x,
+    y,
+    z,
+    yaw,
+    pitch,
+    camera: { orbitYaw, orbitPitch, distance },
+    time: time === 1 ? 0 : time,
+  };
 }
 
 export function writeSwim(record: SwimRecord, store: KeyValueStore | null = browserStore()): void {

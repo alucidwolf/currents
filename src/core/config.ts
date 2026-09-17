@@ -339,6 +339,188 @@ export const DIORAMA = {
   vignette: 0.32,
 } as const;
 
+/** One moment's light, as the day cycle interpolates it. */
+export interface DayKey {
+  /** Where in the day: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset. */
+  phase: number;
+  /** Water tint just under the surface, and down at the seabed. */
+  shallow: number;
+  deep: number;
+  /** Snell's window overhead. */
+  surfaceGlow: number;
+  sunColor: number;
+  sun: number;
+  ambient: number;
+  fill: number;
+  shaftColor: number;
+  shafts: number;
+  causticColor: number;
+  caustics: number;
+  /** Scale on the diorama's warm highlights. */
+  warmth: number;
+  /** How much the drifting specks glow, 0 to 1. */
+  glow: number;
+}
+
+/**
+ * The approved look, which is what the whole middle of the day is.
+ *
+ * Every value is the one the scene was tuned with before there was a clock,
+ * read straight from the settings above rather than copied, so the day cannot
+ * quietly drift away from the look it is meant to be. `npm run verify:day`
+ * holds it to that.
+ */
+const DAYLIGHT = {
+  shallow: WATER.shallowColor,
+  deep: WATER.deepColor,
+  surfaceGlow: WATER.surfaceGlow,
+  sunColor: WATER.sunColor,
+  sun: WATER.sunIntensity,
+  ambient: WATER.ambientIntensity,
+  fill: WATER.fillIntensity,
+  shaftColor: 0xdcf7ff,
+  shafts: 0.26,
+  causticColor: 0xd6f6ff,
+  caustics: 0.95,
+  warmth: 1,
+  glow: 0,
+} as const;
+
+/**
+ * Night: moonlit rather than black.
+ *
+ * The same rule as depth applies. Darkness reads as *deeper blue*, never as
+ * grey or black, or the ocean stops looking like water and starts looking like
+ * a screen that has been turned down. The light that is left is cool and comes
+ * from above, and the specks in the water take over as the brightest things in
+ * it.
+ */
+const NIGHT = {
+  shallow: 0x0f3452,
+  deep: 0x071d33,
+  surfaceGlow: 0x5d80a8,
+  sunColor: 0xa9c0e6,
+  sun: 0.3,
+  ambient: 0.36,
+  fill: 0.12,
+  shaftColor: 0xa6c2ec,
+  shafts: 0.05,
+  causticColor: 0xa8c6ee,
+  caustics: 0.16,
+  warmth: 0,
+  glow: 1,
+} as const;
+
+export const DAY = {
+  /**
+   * Seconds for one whole day.
+   *
+   * Minutes, not hours. The page is left open beside other work and glanced
+   * at, and one sitting should see all of it — sunrise, the bright middle,
+   * dusk and a night — rather than an afternoon that never changes.
+   */
+  length: 20 * 60,
+  /** Where a brand-new ocean starts: mid-morning, the bright approved look. */
+  startPhase: 0.36,
+  /**
+   * The keys the day is interpolated between, in phase order, wrapping from the
+   * last back round to the first.
+   *
+   * Dawn and dusk carry the most keys because that is where the light changes
+   * fastest and where the colour is. Between two keys the blend is eased, so
+   * no moment of the day is a visible corner.
+   */
+  keys: [
+    { phase: 0, ...NIGHT },
+    { phase: 0.14, ...NIGHT },
+    {
+      phase: 0.21,
+      shallow: 0x1d4a6c,
+      deep: 0x0b2c4b,
+      surfaceGlow: 0x8f9fcc,
+      sunColor: 0xbcc2e2,
+      sun: 0.38,
+      ambient: 0.42,
+      fill: 0.15,
+      shaftColor: 0xb8bfe6,
+      shafts: 0.06,
+      causticColor: 0xb4c4ea,
+      caustics: 0.24,
+      warmth: 0.3,
+      glow: 0.55,
+    },
+    {
+      // Sunrise: the window overhead goes gold before the water does.
+      //
+      // Warm light into teal water is exactly the pairing that averages to grey
+      // (see `WATER.sunColor`), and the first pass at this key looked like a
+      // tired noon for that reason. What reads as warm instead is the water
+      // leaning *bluer* than by day, so the gold stands against it rather than
+      // mixing into it, with most of the warmth carried by the grade, the
+      // caustics and the shafts — the light on the sand, not the water itself.
+      phase: 0.27,
+      shallow: 0x3589ac,
+      deep: 0x154c78,
+      surfaceGlow: 0xffc0a0,
+      sunColor: 0xffd6b8,
+      sun: 0.8,
+      ambient: 0.54,
+      fill: 0.19,
+      shaftColor: 0xffcfa8,
+      shafts: 0.3,
+      causticColor: 0xffd2b0,
+      caustics: 0.76,
+      warmth: 3.4,
+      glow: 0.05,
+    },
+    { phase: 0.36, ...DAYLIGHT },
+    { phase: 0.64, ...DAYLIGHT },
+    {
+      // Sunset: golder and stronger than sunrise, on the same principle.
+      phase: 0.73,
+      shallow: 0x327ea3,
+      deep: 0x16426c,
+      surfaceGlow: 0xffae6e,
+      sunColor: 0xffc794,
+      sun: 0.82,
+      ambient: 0.5,
+      fill: 0.18,
+      shaftColor: 0xffbd78,
+      shafts: 0.32,
+      causticColor: 0xffc48a,
+      caustics: 0.78,
+      warmth: 4,
+      glow: 0.05,
+    },
+    {
+      // Dusk: the light goes violet on its way out.
+      phase: 0.8,
+      shallow: 0x22506f,
+      deep: 0x0e2f4f,
+      surfaceGlow: 0xa88aad,
+      sunColor: 0xc4a8c8,
+      sun: 0.42,
+      ambient: 0.44,
+      fill: 0.15,
+      shaftColor: 0xc9a9cb,
+      shafts: 0.08,
+      causticColor: 0xc8b0d0,
+      caustics: 0.3,
+      warmth: 0.7,
+      glow: 0.4,
+    },
+    { phase: 0.88, ...NIGHT },
+  ] satisfies DayKey[],
+  /**
+   * Where the sun sits relative to the animal, before the day moves it.
+   *
+   * It swings from east at sunrise to west at sunset by `sunSwing` metres, so
+   * shadows lean long in the low light and stand short at noon.
+   */
+  sunOffset: [26, 80, 14],
+  sunSwing: 40,
+} as const;
+
 export const RENDER = {
   /** Retina is not worth the fill rate here. */
   maxPixelRatio: 1.5,

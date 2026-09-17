@@ -40,7 +40,7 @@ npm run dev      # http://127.0.0.1:5173
 | **M** | Sound on and off. |
 | **N** | A new ocean. Different seed, different animal. |
 | **H** | Toggle the control hints. |
-| **F** | Toggle the stats overlay (fps, draw calls, chunk count, depth). |
+| **F** | Toggle the stats overlay (fps, draw calls, chunk count, depth, time of day). |
 | **P** | Toggle the diorama pass — depth of field, grade and vignette — to compare, or to claw back frame time. |
 
 Both mouse gestures are holds. A button does nothing until it has been down for
@@ -80,15 +80,52 @@ arrow carrying the animal 12.4 metres to the *left*.
 | `#ambient` | Start with no overlay at all — no title card, and the hints already faded. **This is the link to leave open on a second monitor.** |
 | `#seed=abc123` | Rebuild a specific ocean exactly. The current seed is shown bottom-left, and is always written into the address, so a copied link is this ocean. |
 | `#species=manta` | Start as a named animal (`whale`, `turtle`, `manta`, `dolphin`) rather than a random one. Swapping animals in game rewrites this, so a reload keeps whichever one you are currently being. |
+| `#time=dusk` | Open at a time of day: `night`, `dawn`, `sunrise`, `morning`, `noon`, `sunset`, `dusk`, or an hour on a 24-hour clock such as `time=18.5`. Read once when the page opens and then removed from the address, so a later reload carries on from wherever the clock has got to. |
 
-Fragments combine: `#seed=reef7&species=manta`.
+Fragments combine: `#seed=reef7&species=manta&time=sunset`.
+
+## Time of day
+
+A whole day passes in twenty minutes (`DAY.length`), so one sitting sees all of
+it: a bright middle of the day, a warm sunset, dusk going violet, a moonlit night
+where the specks drifting in the water glow, and a gold sunrise. The clock is
+the time on the stats overlay (**F**).
+
+The middle of the day — from mid-morning to mid-afternoon — *is* the approved
+look, unchanged. Its values are read straight from the `WATER` settings rather
+than copied, and `npm run verify:day` fails if any of them drift, so the day
+cycle adds times of day around that look instead of replacing it.
+
+Everything that lights the water takes one sample of the clock each frame
+(`src/world/dayCycle.ts`): the water tint and fog, the ceiling's window, the sun,
+ambient and fill lights, the light shafts, the caustics on the seabed, the warm
+side of the diorama grade, and the glow of the specks. The look lives in
+`DAY.keys` in the config as a handful of moments, and the rest of the day is an
+eased blend between them, so no moment of the day is a visible corner. The day
+check samples the whole cycle, across midnight too, and fails on any jump.
+
+Two rules carried over from the tuning of the daytime look decide how the other
+times are coloured:
+
+- **Night is deeper blue, never black or grey.** Darkness underwater should read
+  like depth does. The moonlight left is cool and comes from above, and the
+  glowing specks become the brightest thing in the water.
+- **Sunrise and sunset are warm light on blue water, not warm water.** Gold
+  light mixed into teal water averages to grey, and the first attempt at these
+  looked like a tired noon for exactly that reason. The water leans slightly
+  bluer than by day instead, and the warmth is carried by the grade, the shafts
+  and the caustics — the light on the sand.
+
+The sun also moves: east at sunrise, overhead at noon, west at sunset, so the
+animal's shadow leans in the low light.
 
 ## Remembering where you were
 
 Close the tab, come back tomorrow, and the swim carries on: the same ocean, the
-same animal, in the same place, heading the same way, with the camera framed
-the way you left it. A resumed swim does not replay the logo. Sound on or off
-and the volume are remembered too, and those carry across every ocean.
+same animal, in the same place, heading the same way, at the same time of day,
+with the camera framed the way you left it. A resumed swim does not replay the
+logo. Sound on or off and the volume are remembered too, and those carry across
+every ocean.
 
 The swim belongs to one ocean. Opening a link to a different seed starts that
 ocean from the beginning, and from then on it is the one remembered. **N**
@@ -502,7 +539,7 @@ src/
   render/      the diorama pass: depth of field, grade, vignette
   world/       terrain, chunk streaming, decor, water, caustics, fish, motes
   ui/          HUD, title card, sound control, and what the URL asks for
-tools/         headless checks: bodies, steering, reef, wander, memory
+tools/         headless checks: bodies, steering, reef, wander, memory, day
 ```
 
 Start with `src/core/config.ts` — if a number matters, it lives there.

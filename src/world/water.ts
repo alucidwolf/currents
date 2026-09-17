@@ -24,6 +24,14 @@ export class Water {
   /** Endpoints the horizon ramp leans toward, above and below eye level. */
   private readonly surfaceLight = new THREE.Color(WATER.surfaceGlow);
   private readonly abyss = new THREE.Color(WATER.deepColor).multiplyScalar(0.45);
+  /**
+   * The light intensities before depth dims them. They start at the approved
+   * daylight values and are replaced by the day cycle every frame.
+   */
+  private sunLevel: number = WATER.sunIntensity;
+  private ambientLevel: number = WATER.ambientIntensity;
+  private fillLevel: number = WATER.fillIntensity;
+  private readonly sunOffset = new THREE.Vector3(26, 80, 14);
 
   private readonly fog: THREE.FogExp2;
   private readonly ambient: THREE.HemisphereLight;
@@ -150,6 +158,37 @@ export class Water {
     return mesh;
   }
 
+  /**
+   * Take this moment's light from the day cycle.
+   *
+   * Only the inputs change. The depth ramp, the horizon rule and the ceiling
+   * all go on working exactly as they did, just from different colours — so the
+   * fog still meets the backdrop at eye level at every hour.
+   */
+  setDay(
+    light: {
+      shallow: THREE.Color;
+      deep: THREE.Color;
+      surfaceGlow: THREE.Color;
+      sunColor: THREE.Color;
+      sun: number;
+      ambient: number;
+      fill: number;
+    },
+    sunOffset: THREE.Vector3,
+  ): void {
+    this.shallow.copy(light.shallow);
+    this.deep.copy(light.deep);
+    this.abyss.copy(light.deep).multiplyScalar(0.45);
+    this.surfaceLight.copy(light.surfaceGlow);
+    this.surfaceUniforms.uGlow.value.copy(light.surfaceGlow);
+    this.sun.color.copy(light.sunColor);
+    this.sunLevel = light.sun;
+    this.ambientLevel = light.ambient;
+    this.fillLevel = light.fill;
+    this.sunOffset.copy(sunOffset);
+  }
+
   update(dt: number, swimmerPosition: THREE.Vector3): void {
     this.surfaceUniforms.uSurfaceTime.value += dt;
 
@@ -179,18 +218,14 @@ export class Water {
     this.surfaceUniforms.uMirror.value.copy(this.tint).lerp(this.abyss, 0.22);
 
     this.ambient.color.copy(this.tint).lerp(this.shallow, 0.55);
-    this.ambient.intensity = WATER.ambientIntensity * (1 - eased * 0.35);
-    this.sun.intensity = WATER.sunIntensity * (1 - eased * 0.5);
-    this.fill.intensity = WATER.fillIntensity * (1 - eased * 0.35);
+    this.ambient.intensity = this.ambientLevel * (1 - eased * 0.35);
+    this.sun.intensity = this.sunLevel * (1 - eased * 0.5);
+    this.fill.intensity = this.fillLevel * (1 - eased * 0.35);
 
     // Both lights ride along with the swimmer, keeping their directions
     // constant no matter how far the world has been travelled.
     this.sun.target.position.copy(swimmerPosition);
-    this.sun.position.set(
-      swimmerPosition.x + 26,
-      swimmerPosition.y + 80,
-      swimmerPosition.z + 14,
-    );
+    this.sun.position.copy(swimmerPosition).add(this.sunOffset);
 
     this.fill.target.position.copy(swimmerPosition);
     this.fill.position.set(

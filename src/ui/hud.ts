@@ -20,6 +20,8 @@ export interface HudStats {
   speed: number;
   clamped: boolean;
   target: string | null;
+  /** Time of day on a 24-hour clock. */
+  time: string;
 }
 
 /** How long a swapped-in animal's name stays up. */
@@ -98,6 +100,7 @@ export class Hud {
       `speed     ${stats.speed.toFixed(2).padStart(5)}`,
       `clamped   ${String(stats.clamped).padStart(5)}`,
       `curious   ${stats.target ?? "—"}`,
+      `time      ${stats.time.padStart(5)}`,
     ].join("\n");
   }
 }

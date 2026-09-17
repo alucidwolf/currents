@@ -2,7 +2,7 @@ import * as THREE from "three";
 import "./styles.css";
 
 import { Soundscape } from "./audio/soundscape";
-import { CAMERA, RENDER, SWIM, WORLD } from "./core/config";
+import { CAMERA, DAY, RENDER, SWIM, WORLD } from "./core/config";
 import { createLoop } from "./core/loop";
 import { forgetSwim, readSettings, readSwim, writeSettings, writeSwim } from "./core/memory";
 import { formatSeed, resolveWorldSeed } from "./core/rng";
@@ -27,6 +27,7 @@ import { Water } from "./world/water";
 import { Hud } from "./ui/hud";
 import { isAmbientMode, requestedSpecies } from "./ui/launch";
 import { SoundControl } from "./ui/soundControl";
+import { DayClock, formatPhase, phaseFromHash, sunOffset } from "./world/dayCycle";
 import { SpeciesPicker } from "./ui/speciesPicker";
 import { TitleCard } from "./ui/titleCard";
 
@@ -59,7 +60,8 @@ diorama.setSize(window.innerWidth, window.innerHeight, renderer.getPixelRatio())
 // -- world -------------------------------------------------------------------
 
 // A remembered swim only counts in the ocean it was swum in. A link naming a
-// different seed opens that ocean fresh, and leaves the remembered one alone.
+// different seed opens that ocean fresh, and that ocean is then the one
+// remembered.
 const storedSwim = readSwim();
 const worldSeed = resolveWorldSeed(location.hash, storedSwim?.seed ?? null);
 const resumed = storedSwim?.seed === worldSeed ? storedSwim : null;
@@ -117,6 +119,27 @@ const fish = new FishSchools(scene, terrain, worldSeed, swimmer.position);
 const motes = new Motes(scene, swimmer.position);
 const shafts = new LightShafts(scene, worldSeed);
 
+// -- time of day -------------------------------------------------------------
+
+/**
+ * A link's `#time=` wins, then the time the remembered swim was left at, then
+ * mid-morning. A new ocean always opens in the bright approved look.
+ */
+const day = new DayClock(phaseFromHash() ?? resumed?.time ?? DAY.startPhase);
+const sunPosition = new THREE.Vector3();
+
+/** Hand this moment's light to everything that shows it. */
+function applyDay(): void {
+  const light = day.light;
+  water.setDay(light, sunOffset(light.phase, sunPosition));
+  shafts.setDay(light.shaftColor, light.shafts);
+  caustics.setDay(light.causticColor, light.caustics);
+  motes.setGlow(light.glow);
+  diorama.setWarmth(light.warmth);
+}
+
+applyDay();
+
 // Curiosity draws on both the static reef and the fish moving through it.
 wander.setPoiProvider((near, radius, out) => {
   chunks.collectPointsOfInterest(near, radius, out);
@@ -147,13 +170,17 @@ let swapSettle = 1;
  * The seed is written even when the link did not name one, so a copied address
  * is always this exact ocean.
  *
+ * `time=` is dropped. It is an instruction for the moment the page opens, not a
+ * setting: left in the address, every reload would pull the clock back to it
+ * and throw away the time the swim had actually reached.
+ *
  * `replaceState` rather than assigning `location.hash`: assigning pushes a
  * history entry for every swap, so Back would walk you through each one instead
  * of leaving the page.
  */
 function rememberSpecies(id: string): void {
   const parts = location.hash.replace(/^#/, "").split("&").filter(Boolean);
-  const kept = parts.filter((part) => !/^(?:seed|species)=/i.test(part));
+  const kept = parts.filter((part) => !/^(?:seed|species|time)=/i.test(part));
   kept.unshift(`seed=${formatSeed(worldSeed)}`);
   kept.push(`species=${id}`);
   history.replaceState(null, "", `#${kept.join("&")}`);
@@ -300,6 +327,7 @@ function saveSwim(): void {
     yaw: swimmer.yaw,
     pitch: swimmer.pitch,
     camera: rig.snapshot(),
+    time: day.phase,
   });
 }
 
@@ -341,6 +369,8 @@ let lastYaw = swimmer.yaw;
 const loop = createLoop((dt, elapsed) => {
   input.tick(dt);
   current.update(elapsed);
+  day.update(dt);
+  applyDay();
 
   if (creature && species) {
     let command: SteerCommand;
@@ -412,6 +442,7 @@ const loop = createLoop((dt, elapsed) => {
     speed: swimmer.speed,
     clamped: swimmer.clamped,
     target: wander.currentTargetKey,
+    time: formatPhase(day.phase),
   });
 
   // Drag and wheel are accumulators; the camera has now had its look at them.
@@ -533,6 +564,9 @@ if (import.meta.env.DEV) {
     diorama,
     sound,
     saveSwim,
+    day,
+    applyDay,
+    water,
   };
 }
 
