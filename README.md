@@ -8,6 +8,11 @@ spare monitor.
 
 No score, no timer, no fail state.
 
+[**docs/vision.md**](docs/vision.md) says what the page is for and what it
+refuses, and has the test a new idea has to pass. Read it before adding
+anything; this README's **Art direction** section remains the authority on how
+it all looks.
+
 ## Running it
 
 ```sh
