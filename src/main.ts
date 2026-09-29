@@ -26,6 +26,8 @@ import { Terrain } from "./world/terrain";
 import { Water } from "./world/water";
 import { Hud } from "./ui/hud";
 import { isAmbientMode, requestedSpecies } from "./ui/launch";
+import { PauseControl, prefersReducedMotion } from "./ui/pauseControl";
+import { ShareControl } from "./ui/shareControl";
 import { SoundControl } from "./ui/soundControl";
 import { DayClock, formatPhase, phaseFromHash, sunOffset } from "./world/dayCycle";
 import { SpeciesPicker } from "./ui/speciesPicker";
@@ -332,12 +334,28 @@ function saveSwim(): void {
 }
 
 // A closed tab, a reload, and a tab put in the background all save, so the
-// timer only has to cover a browser that is killed outright.
+// timer only has to cover a browser that is killed outright. A pause saves too,
+// further down: the periodic save runs on the frame loop, which a pause stops.
 window.addEventListener("pagehide", saveSwim);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) saveSwim();
-  sound.setHidden(document.hidden);
+  applySoundSuspend();
 });
+
+/** Set while the player is holding the world still. */
+let worldPaused = false;
+
+/**
+ * Silence while nobody is listening, for either of the two reasons.
+ *
+ * Both have to be weighed together every time. Suspending on whichever one just
+ * changed would mean tabbing away from a paused page and back resumed the sound
+ * over a world that is still frozen — the visibility handler cannot see the
+ * pause, and would speak for it.
+ */
+function applySoundSuspend(): void {
+  sound.setHidden(document.hidden || worldPaused);
+}
 
 // -- sound -------------------------------------------------------------------
 
@@ -351,8 +369,9 @@ document.addEventListener("visibilitychange", () => {
 function startSound(): void {
   sound.start();
   // The visibility listener only hears changes, so a page that is already
-  // hidden when sound starts has to be told.
-  sound.setHidden(document.hidden);
+  // hidden — or already paused, which is how a reduced-motion visit opens — has
+  // to be told where it stands.
+  applySoundSuspend();
   soundControl.refresh();
   for (const type of ["pointerdown", "keydown", "wheel", "touchstart"]) {
     window.removeEventListener(type, startSound, true);
@@ -473,6 +492,36 @@ window.addEventListener("keydown", (event) => {
   dioramaOn = !dioramaOn;
 });
 
+// -- holding it still --------------------------------------------------------
+
+/**
+ * Everything a pause means, in one place.
+ *
+ * The loop stops, so nothing moves and nothing is drawn. The sound goes with it.
+ * And the swim is written down, because the periodic save rides on the very loop
+ * that has just stopped — without this, pausing and then closing the tab hours
+ * later would save from the moment of the pause at best, and the last fifteen
+ * second tick at worst.
+ *
+ * One still frame is drawn on the way in. Mid-swim it changes nothing, since the
+ * canvas already holds the frame just rendered; it is there for the opening
+ * pause of a reduced-motion visit, where without it the loading screen would
+ * lift off a canvas that has never been drawn at all.
+ */
+function applyPause(paused: boolean): void {
+  worldPaused = paused;
+  loop.setPaused(paused);
+  applySoundSuspend();
+  if (paused) {
+    saveSwim();
+    loop.renderStill();
+  }
+}
+
+const pauseControl = new PauseControl(applyPause, () => picker.isOpen);
+// Nothing to hold on to: it wires its own button and answers only to that.
+new ShareControl();
+
 // -- lifecycle ---------------------------------------------------------------
 
 window.addEventListener("resize", () => {
@@ -480,6 +529,9 @@ window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   diorama.setSize(window.innerWidth, window.innerHeight, renderer.getPixelRatio());
   rig.resize(window.innerWidth / window.innerHeight);
+  // A paused page draws nothing, so the old frame would sit there stretched to
+  // the new shape until something else happened to paint it.
+  if (loop.paused) loop.renderStill();
 });
 
 /**
@@ -562,6 +614,10 @@ if (import.meta.env.DEV) {
     // exactly when you most want to pose the camera and look at one frame.
     renderer,
     diorama,
+    // And the loop itself, for the same reason: `renderStill()` draws that one
+    // frame without the world moving under it, and `paused` says whether the
+    // stillness on screen was asked for or is just an uncomposited window.
+    loop,
     sound,
     saveSwim,
     day,
@@ -590,6 +646,22 @@ if (CAMERA.idleEnabled) {
 renderer.compile(scene, rig.camera);
 
 loop.start();
+
+/**
+ * A machine asking for less movement opens on a still ocean.
+ *
+ * Started and then immediately held, rather than never started: the loop draws
+ * the world once on the way into a pause, so what the loading screen lifts off
+ * is a real frame of a real ocean rather than an empty canvas. It is a picture
+ * until somebody asks for it to move, which is the whole point.
+ *
+ * Not remembered either way. The setting is the system's to state and ours to
+ * obey each visit, so unpausing is for this visit only and does not quietly
+ * overrule the machine next time.
+ */
+if (prefersReducedMotion()) {
+  pauseControl.set(true);
+}
 
 /**
  * Take the loading screen down once there is genuinely something behind it.

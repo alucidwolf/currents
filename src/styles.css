@@ -58,6 +58,19 @@ body {
   opacity: 0;
 }
 
+/*
+  A paused page is pure stillness, which is exactly what the fade above is
+  waiting for — so without this the controls would fade out seconds after being
+  used, leaving a frozen ocean and no visible way to start it again. Placed after
+  the fade rule so it wins at equal specificity.
+
+  H still hides the HUD outright, below. Somebody who has switched the overlay
+  off has said what they want, and a pause should not overrule it.
+*/
+.hud[data-paused="true"] {
+  opacity: 1;
+}
+
 .hud[data-hidden="true"] {
   display: none;
 }
@@ -138,6 +151,71 @@ body {
   width: 5.5rem;
   accent-color: #9fd6e8;
   cursor: pointer;
+}
+
+/* The same pill again, for the two things that act on the world itself. */
+.world-controls {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.3rem 0.4rem;
+  background: var(--glass);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+
+.world-controls__button {
+  padding: 0.25rem 0.6rem;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--ink-dim);
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.25s ease, background 0.25s ease;
+}
+
+/*
+  Lit while paused, and while the copy button is reporting what happened. Both
+  are the button saying "this is the state you are in now" rather than offering
+  something, which is the same thing the sound switch does when sound is on.
+*/
+.world-controls__button[data-on="true"],
+.world-controls__button[data-said="true"] {
+  color: var(--ink);
+}
+
+.world-controls__button:hover,
+.world-controls__button:focus-visible {
+  background: rgba(160, 214, 232, 0.12);
+  outline: none;
+}
+
+/*
+  A hairline between the two, because "play" and "copy link" next to each other
+  read as one sentence otherwise. Its own element rather than a border, so it can
+  be shorter than the buttons are tall.
+*/
+.world-controls__rule {
+  width: 1px;
+  height: 0.85rem;
+  background: var(--edge);
+}
+
+/*
+  Both labels change as they are used — "pause" to "play", "copy link" to
+  whichever of three things happened — and each change resizes the pill, which
+  drags the other button sideways under the cursor that just pressed it. A floor
+  wide enough for the longest label each can hold keeps the pill still.
+*/
+#pause-toggle {
+  min-width: 3.6rem;
+}
+
+#share-link {
+  min-width: 6.6rem;
 }
 
 /*

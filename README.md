@@ -25,6 +25,9 @@ npm run dev      # http://127.0.0.1:5173
 | `npm run verify:reef` | Headless survey of how life is distributed on the seabed |
 | `npm run verify:bodies` | Headless check that the animals are solid and face outward |
 | `npm run verify:steering` | Headless check that each control goes the way it looks, and that the camera stays in the water |
+| `npm run verify:memory` | Headless check that the page only ever resumes a swim it can trust |
+| `npm run verify:day` | Headless check that the light never jumps, and that noon is still the approved look |
+| `npm run verify:pause` | Headless check that a pause is not undone by a tab switch |
 
 ## Controls
 
@@ -37,6 +40,9 @@ npm run dev      # http://127.0.0.1:5173
 | **Swimming as…** | The button bottom-centre opens the animal picker. The ocean keeps moving behind it, and choosing is instant — position, heading and speed all carry over, so the new animal picks up exactly where the last one was. |
 | **1**–**4**, **Tab** | The same thing without opening anything. Numbers pick one outright, Tab walks the list (Shift+Tab backwards). |
 | **Sound on**, volume | The pill bottom-right. Sound starts on your first click or key, because browsers allow nothing before one, and fades in over a few seconds. |
+| **Pause** / **play** | Hold the ocean still, or let it go. Sound stops with it, and the swim is written down, so a paused tab left open for hours resumes exactly where it stopped. |
+| **Space** | The same thing from the keyboard. Ignored while the animal picker is open, and while a button or slider has focus, so it never fires twice. |
+| **Copy link** | Puts the address of this exact ocean on the clipboard. A browser can refuse — the clipboard needs a secure context — and the button then says to use the address bar, which is the same link and always was. |
 | **M** | Sound on and off. |
 | **N** | A new ocean. Different seed, different animal. |
 | **H** | Toggle the control hints. |
@@ -157,6 +163,39 @@ off every sound in it, and that one filter does more to put you underwater than
 any of the layers does on its own. The noise loops are crossfaded at their ends
 so the hum never thumps where the buffer repeats, and sound stops while the tab
 is hidden.
+
+## Pausing, and reduced motion
+
+The pause button and the space bar both hold the world still. Pausing stops the
+frame loop outright, so nothing moves, nothing is drawn, and the page costs
+almost nothing to leave open. Sound goes quiet with it, and the swim is saved on
+the way in — the periodic save rides on the very loop that has just stopped, so
+without that a paused tab closed hours later would have lost everything since
+the pause.
+
+**A machine set to `prefers-reduced-motion: reduce` opens on a still ocean.**
+That setting is a request for less movement, and a page that moves constantly
+until it is caught and stopped is not an answer to it. The loop is started and
+then held immediately rather than never started at all, because a pause draws
+one frame on the way in: what the loading screen lifts off is a real ocean
+holding still, not an empty canvas. Pressing play is for that visit only. The
+setting is the system's to state and ours to obey each time, so unpausing is
+never remembered and never quietly overrules the machine on the next visit.
+
+The pause also holds the overlay open. The HUD fades itself out after a few
+seconds of stillness, and a paused page is nothing but stillness — without that
+the controls would fade moments after being used, leaving a frozen ocean and no
+visible way to start it again. **H** still hides the overlay outright; somebody
+who switched it off has said what they want.
+
+There are **two independent reasons the loop stops** — you asked, or nobody can
+see the page — and they are tracked separately on purpose. The obvious version
+of this keeps one `running` flag and resumes whenever the visibility handler
+finds the loop stopped; that version works until a paused tab is switched away
+from and come back to, at which point the world starts up again, because by then
+nothing records that the stop was deliberate. `npm run verify:pause` tries both
+in both orders and is what would catch it; run against that one-flag version it
+reports the world starting itself twice.
 
 ## Art direction
 

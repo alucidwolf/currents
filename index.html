@@ -224,7 +224,33 @@
               aria-label="Volume"
             />
           </div>
-          <span class="hud__dim">M sound &middot; N new ocean &middot; H hints &middot; F stats</span>
+
+          <!--
+            Holding the ocean still, and handing it to somebody else. Both are
+            in the same pill because both act on the whole world rather than
+            being settings of your own — and unlike the sound, neither is
+            remembered: a pause is not a preference, and the link is already in
+            the address bar.
+
+            The pause button has no label here on purpose. The script writes
+            "pause" or "play" into it, and either one fixed in the markup would
+            be wrong half the time.
+          -->
+          <div class="world-controls" role="group" aria-label="This ocean">
+            <button
+              id="pause-toggle"
+              class="world-controls__button"
+              type="button"
+              aria-pressed="false"
+              aria-label="Hold the ocean still"
+            ></button>
+            <span class="world-controls__rule" aria-hidden="true"></span>
+            <button id="share-link" class="world-controls__button" type="button" data-said="false">
+              copy link
+            </button>
+          </div>
+
+          <span class="hud__dim">Space pause &middot; M sound &middot; N new ocean &middot; H hints &middot; F stats</span>
         </div>
       </div>
     </div>
