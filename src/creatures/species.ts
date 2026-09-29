@@ -7,7 +7,8 @@ import {
   buildFoil,
   buildWingDisc,
   mergeGeometries,
-  overlayPattern,
+  paintFacets,
+  toFacets,
   transformed,
 } from "./shapes";
 import { createSwimMaterial } from "./swimShader";
@@ -20,13 +21,45 @@ import type { SwimMaterial } from "./swimShader";
  * a single draw call. Only the turtle carries separate child meshes, because
  * rowing flippers cannot be expressed as a travelling wave along a body.
  *
- * These aim for recognisable anatomy rather than generic sea-creature
- * outlines: a humpback's absurd pectorals and knobbled rostrum, a dolphin's
- * melon and beak, a ray's cephalic fins, a turtle's scutes. Those specifics are
- * what the eye actually uses to identify an animal — far more than polygon
- * count — but they only hold up close if the surfaces beneath them are smooth,
- * which is what the raised segment counts are for.
+ * These aim for a recognisable *silhouette* rather than recognisable anatomy:
+ * a humpback's absurd pectorals, a dolphin's melon and beak, a ray's cephalic
+ * fins, a turtle's domed shell. Those outlines are what the eye actually uses
+ * to identify an animal, far more than polygon count does — which is what lets
+ * the segment counts come down until every face can be seen and counted.
+ *
+ * Each animal is built to the same recipe: stout toy proportions, a big head,
+ * oversized dot eyes and nothing else of a face, and four flat areas of colour
+ * — a back, a cream belly, darker tips, and one accent that is the thing you
+ * would name if you had to describe the animal in three words.
  */
+
+/**
+ * Form targets for the faceted look, from design-system/tokens.json.
+ *
+ * Multipliers apply to what the animals already were, so each keeps its own
+ * character instead of converging on one shape.
+ */
+const FORM = {
+  /** Radial segments on every swept body. Low counts are what make facets read. */
+  radial: 9,
+  /** Lengthwise segments. Twelve is the floor before the swim wave visibly kinks. */
+  segments: 14,
+  /** Chord segments on foils, flukes and the wing disc. */
+  chord: 4,
+  /** Eyes are tiny faceted beads, not spheres. */
+  eyeSegments: 6,
+  /** Eyes this much bigger, and nudged up and forward. The main cute lever. */
+  eye: 1.8,
+  /** The front third bulks up by this much. */
+  head: 1.2,
+  /** Bodies shorten by this much while keeping their height, so they read stout. */
+  length: 0.82,
+  /** Secondary fins shrink. Never the signature shape. */
+  limb: 0.8,
+} as const;
+
+/** The cream underside every animal shares. */
+const BELLY = 0xf3f1e6;
 
 export interface CreatureRig {
   root: THREE.Group;
@@ -57,20 +90,40 @@ const EYE = 0x131110;
 
 /** A small dark eye. Cheap, and the single biggest gain in reading as alive. */
 function eyeball(radius: number): THREE.BufferGeometry {
-  return new THREE.SphereGeometry(radius, 10, 8);
+  return new THREE.SphereGeometry(radius, FORM.eyeSegments, 4);
 }
 
-/** Eyes are placed as a mirrored pair on every animal. */
+/**
+ * Eyes are placed as a mirrored pair on every animal.
+ *
+ * Bigger than life and set a little high and forward, which is the whole of
+ * the face. There are no pupils, no catchlights, no brows and no mouth — a
+ * solid dark bead reads as an animal looking at something, and anything added
+ * to it starts reading as a cartoon instead.
+ */
 function eyePair(
   radius: number,
   x: number,
   y: number,
   z: number,
 ): Array<{ geometry: THREE.BufferGeometry; color: number }> {
+  const r = radius * FORM.eye;
   return [1, -1].map((side) => ({
-    geometry: transformed(eyeball(radius), (m) => m.makeTranslation(side * x, y, z)),
+    geometry: transformed(eyeball(r), (m) =>
+      m.makeTranslation(side * x, y + r * 0.45, z + r * 0.5),
+    ),
     color: EYE,
   }));
+}
+
+/**
+ * Bulk the front third of a body.
+ *
+ * Eased in rather than stepped, so the head is oversized without a collar
+ * where it meets the rest. `t` runs 0 at the tail to 1 at the nose.
+ */
+function headBulk(t: number): number {
+  return 1 + (FORM.head - 1) * smooth(t, 0.55, 0.94);
 }
 
 /**
@@ -140,9 +193,9 @@ const whale: SpeciesDef = {
   blurb: "Vast and unhurried. Turns like a continent.",
   speedScale: 0.86,
   turnScale: 0.62,
-  viewDistance: 30,
+  viewDistance: 30 * FORM.length,
   build() {
-    const length = 15;
+    const length = 15 * FORM.length;
     const girth = 1.66;
     const height = 1.92;
     const half = length / 2;
@@ -156,16 +209,17 @@ const whale: SpeciesDef = {
       // side to side but still deep top to bottom. That asymmetry is what
       // makes the tail stock read as muscle rather than as a spike.
       const stock = 1 - smooth(t, 0, 0.3);
+      const head = headBulk(t);
       return {
-        x: girth * (bulk + 0.055 * stock),
-        y: height * (bulk + 0.17 * stock),
+        x: girth * (bulk + 0.055 * stock) * head,
+        y: height * (bulk + 0.17 * stock) * head,
       };
     };
 
     const body = buildBody({
       length,
-      segments: 46,
-      radial: 22,
+      segments: FORM.segments,
+      radial: FORM.radial,
       radius: radiusAt,
       // Arched back through the middle, jaw hanging below the axis at the
       // front. A body symmetric about its own centreline reads as a tube.
@@ -185,6 +239,7 @@ const whale: SpeciesDef = {
           thickness: 0.3,
           notchDepth: 0.44,
           notchWidth: 0.15,
+          chordSegments: FORM.chord,
         }),
         (m) => m.makeTranslation(0, 0, -half * 0.97),
       ),
@@ -197,10 +252,13 @@ const whale: SpeciesDef = {
       parts.push(
         transformed(
           buildFoil({
+            // The signature shape, kept at full size while everything else
+            // shrinks. Shrink this and it stops being a humpback.
             span: 4.9,
             spanAxis: "x",
             sign: side,
-            stations: 12,
+            stations: 6,
+            chordSegments: FORM.chord,
             chord: (s) => 1.0 - 0.58 * Math.pow(s, 1.3),
             sweep: (s) => -0.85 * Math.pow(s, 1.55),
             thickness: (s) => 0.26 * (1 - 0.7 * s),
@@ -216,9 +274,10 @@ const whale: SpeciesDef = {
     parts.push(
       transformed(
         buildFoil({
-          span: 0.62,
+          span: 0.62 * FORM.limb,
           spanAxis: "y",
-          stations: 6,
+          stations: 4,
+          chordSegments: FORM.chord,
           chord: (s) => 1.5 - 0.9 * s,
           sweep: (s) => -0.42 * s,
           thickness: (s) => 0.22 * (1 - 0.6 * s),
@@ -227,44 +286,52 @@ const whale: SpeciesDef = {
       ),
     );
 
-    // Tubercles: the knobs along the rostrum and jaw. Each is under a tenth of
-    // a metre and individually invisible; collectively unmistakable.
-    for (let i = 0; i < 18; i++) {
-      const t = 0.78 + (i / 17) * 0.2;
-      const lane = i % 3;
+    // Tubercles: the knobs along the rostrum. There used to be eighteen of
+    // them, each under a tenth of a metre — individually invisible, together
+    // unmistakable. At this scale of facet that reads as noise rather than as
+    // knobs, so there are now four big ones down the centre of the head. Few
+    // and large is the rule: a chunky thing with a few chunky lumps on it.
+    for (let i = 0; i < 4; i++) {
+      const t = 0.8 + (i / 3) * 0.16;
       const bulk = bulkAt(t);
-      const z = -half + t * length;
-      const radius = lane === 0 ? 0.1 : 0.075;
-      const spread = lane === 0 ? 0 : (lane === 1 ? 1 : -1) * girth * bulk * 0.74;
-      const lift = arch(t) + height * bulk * (lane === 0 ? 0.92 : 0.34);
-
       parts.push(
-        transformed(new THREE.SphereGeometry(radius, 7, 6), (m) =>
-          m.makeTranslation(spread, lift, z),
+        transformed(new THREE.SphereGeometry(0.19, 5, 4), (m) =>
+          m.makeTranslation(
+            0,
+            arch(t) + height * bulk * headBulk(t) * 0.88,
+            -half + t * length,
+          ),
         ),
       );
     }
 
-    let geometry = applyCountershading(mergeGeometries(parts), 0x3d7aa8, 0xe9f1f3, 0.5);
+    let geometry = applyCountershading(
+      toFacets(mergeGeometries(parts)),
+      0x3d7aa8,
+      BELLY,
+      0.5,
+    );
 
-    geometry = overlayPattern(geometry, (x, y, z) => {
-      // White pectorals. A humpback's flippers are startlingly pale against
-      // the body, and that hard light/dark split is the strongest graphic
-      // element the animal has — the same job the dark primaries do on a
-      // bird's wing, in reverse.
-      const pectoral =
-        smooth(Math.abs(x), 1.8, 2.8) * smooth(z, 0.2, 1.0) * (1 - smooth(z, 2.8, 3.6));
-      if (pectoral > 0.01) return 1 + pectoral * 2.4;
+    // Four flat areas and nothing else. The ventral pleats that used to run
+    // along the throat are gone: fine parallel grooves are texture, and this
+    // direction has none — at nine radial segments they aliased into noise
+    // rather than reading as pleats.
+    geometry = paintFacets(geometry, (x, y, z) => {
+      // The pale pectorals, this animal's accent. A humpback's flippers are
+      // startlingly white against the body, and that hard light/dark split is
+      // the strongest graphic element it has — the same job a seabird's dark
+      // primaries do, in reverse. A hard test, not a blend: the flipper is
+      // pale right to its root.
+      if (Math.abs(x) > 2.0 && z > 0.3 && z < 3.6) return 0xf3f1e6;
 
-      // Ventral pleats: the long grooves running back from the jaw along the
-      // throat. Shading rather than geometry — at any distance you actually
-      // see this animal, the difference is not perceptible.
-      const throat = smooth(z, -length * 0.04, length * 0.3) * smooth(-y, 0.15, 1.2);
-      if (throat <= 0.01) return 1;
-      const phase = x * 3.4;
-      const groove = phase - Math.floor(phase);
-      const edge = Math.min(groove, 1 - groove);
-      return 1 - throat * (1 - smooth(edge, 0.05, 0.24)) * 0.34;
+      // Darker tips: the trailing edge of the fluke, and the top of the hump.
+      if (z < -half * 0.86) return 0x244e76;
+      if (y > height * 0.74 && z > -length * 0.2 && z < length * 0.1) return 0x244e76;
+
+      // The rostrum knobs, which are the head's one piece of detail.
+      if (z > half * 0.56 && y > arch(0.85)) return 0x244e76;
+
+      return null;
     });
 
     // Set into the flank rather than stuck on it: positioning against the
@@ -301,9 +368,9 @@ const dolphin: SpeciesDef = {
   blurb: "Quick, curious, never quite still.",
   speedScale: 1.28,
   turnScale: 1.35,
-  viewDistance: 15,
+  viewDistance: 15 * FORM.length,
   build() {
-    const length = 6.6;
+    const length = 6.6 * FORM.length;
     const girth = 0.6;
     const height = 0.7;
     const half = length / 2;
@@ -317,16 +384,20 @@ const dolphin: SpeciesDef = {
         Math.max(0, Math.sin(Math.PI * Math.pow(Math.min(t / 0.9, 1), 1.25))),
         0.8,
       );
-      const rostrum = 0.19 * smooth(t, 0.7, 0.88) * (1 - smooth(t, 0.93, 1));
+      // The beak is a limb, and shrinks with the others; the melon behind it
+      // does not, so shortening the snout makes the forehead read rounder.
+      const rostrum =
+        0.19 * FORM.limb * smooth(t, 0.7, 0.88) * (1 - smooth(t, 0.93, 1));
       const stock = 1 - smooth(t, 0, 0.26);
       return { core: body * 0.95 + rostrum, stock };
     };
 
     const radiusAt = (t: number) => {
       const { core, stock } = profile(t);
+      const head = headBulk(t);
       return {
-        x: girth * (core + 0.05 * stock),
-        y: height * (core + 0.15 * stock),
+        x: girth * (core + 0.05 * stock) * head,
+        y: height * (core + 0.15 * stock) * head,
       };
     };
 
@@ -336,8 +407,8 @@ const dolphin: SpeciesDef = {
 
     const body = buildBody({
       length,
-      segments: 44,
-      radial: 20,
+      segments: FORM.segments,
+      radial: FORM.radial,
       radius: radiusAt,
       offsetY: droop,
       sharpness: (t) => 2 + 0.35 * Math.sin(Math.PI * t),
@@ -354,6 +425,8 @@ const dolphin: SpeciesDef = {
           thickness: 0.14,
           notchDepth: 0.4,
           notchWidth: 0.16,
+          spanStations: 5,
+          chordSegments: FORM.chord,
         }),
         (m) => m.makeTranslation(0, 0, -half * 0.97),
       ),
@@ -363,9 +436,10 @@ const dolphin: SpeciesDef = {
     parts.push(
       transformed(
         buildFoil({
-          span: 0.92,
+          span: 0.92 * FORM.limb,
           spanAxis: "y",
-          stations: 9,
+          stations: 5,
+          chordSegments: FORM.chord,
           chord: (s) => 0.78 - 0.55 * Math.pow(s, 1.15),
           sweep: (s) => -0.62 * Math.pow(s, 1.35),
           thickness: (s) => 0.1 * (1 - 0.65 * s),
@@ -378,10 +452,11 @@ const dolphin: SpeciesDef = {
       parts.push(
         transformed(
           buildFoil({
-            span: 1.15,
+            span: 1.15 * FORM.limb,
             spanAxis: "x",
             sign: side,
-            stations: 9,
+            stations: 5,
+            chordSegments: FORM.chord,
             chord: (s) => 0.5 - 0.3 * Math.pow(s, 1.2),
             sweep: (s) => -0.42 * Math.pow(s, 1.4),
             thickness: (s) => 0.09 * (1 - 0.65 * s),
@@ -392,14 +467,26 @@ const dolphin: SpeciesDef = {
       );
     }
 
-    let geometry = applyCountershading(mergeGeometries(parts), 0x6b8fb2, 0xf3f8fa, 0.48);
+    let geometry = applyCountershading(
+      toFacets(mergeGeometries(parts)),
+      0x6b8fb2,
+      BELLY,
+      0.48,
+    );
 
-    // The dark cape sweeping back from the melon over the shoulder — a
-    // standard dolphin marking, and a second value step between the light
-    // belly and the mid-tone back.
-    geometry = overlayPattern(geometry, (_x, y, z) => {
-      const cape = smooth(z, -length * 0.1, length * 0.34) * smooth(y, -0.1, 0.35);
-      return 1 - cape * 0.34;
+    geometry = paintFacets(geometry, (_x, y, z) => {
+      // The cape: the dark saddle sweeping back from the melon over the
+      // shoulder. This animal's accent, and the third value between the cream
+      // belly and the mid-tone back. A hard band now rather than a soft wash,
+      // so it ends on a facet edge.
+      if (y > 0.05 && z > -length * 0.06 && z < length * 0.34) return 0x47617f;
+
+      // Darker tips on the dorsal, the fluke and the end of the beak.
+      if (y > height * 0.8) return 0x3f5c7c;
+      if (z < -half * 0.88) return 0x3f5c7c;
+      if (z > half * 0.9) return 0x3f5c7c;
+
+      return null;
     });
 
     const eyeT = 0.8;
@@ -433,17 +520,19 @@ const manta: SpeciesDef = {
   blurb: "All wing. Flies more than it swims.",
   speedScale: 0.98,
   turnScale: 0.95,
-  viewDistance: 22,
+  viewDistance: 22 * FORM.length,
   build() {
+    // The wingspan is the signature and does not shrink. Only the body
+    // shortens behind it, which makes the animal read as more wing still.
     const span = 9.4;
-    const length = 7.6;
+    const length = 7.6 * FORM.length;
 
     const wings = buildWingDisc({
       span,
       length,
       thickness: 0.66,
-      cols: 30,
-      rows: 22,
+      cols: 12,
+      rows: 9,
     });
 
     const parts: THREE.BufferGeometry[] = [wings];
@@ -453,22 +542,31 @@ const manta: SpeciesDef = {
     // just a diamond.
     for (const side of [1, -1]) {
       const lobe = buildBody({
-        length: 1.75,
-        segments: 12,
-        radial: 10,
+        length: 1.75 * FORM.limb,
+        segments: 6,
+        radial: FORM.radial,
         radius(t) {
-          // Thick where it joins the head, rolled to a blunt tip.
-          const taper = 1 - smooth(t, 0.15, 1) * 0.72;
-          return { x: 0.2 * taper, y: 0.26 * taper };
+          // Stubby and rounded rather than tapered: thick where it joins the
+          // head and barely narrowing, so it reads as a blunt toy horn.
+          const taper = 1 - smooth(t, 0.35, 1) * 0.4;
+          return { x: 0.26 * taper, y: 0.32 * taper };
         },
       });
       // Splayed outward and angled slightly down, as they hang when cruising.
       lobe.rotateY(side * -0.34);
       lobe.rotateX(0.2);
 
+      // Rooted where the wing still has width, not off the end of it.
+      //
+      // The disc is a diamond: `widthAt` is a sine that reaches zero at both
+      // z extremes, so the front of the animal is a point. These used to be
+      // anchored just past that point and got away with it, because at thirty
+      // columns the taper was smooth enough to swallow them. At twelve, the
+      // edge is a straight chord between two rows and cuts the corner — and
+      // both lobes came away from the body and hung in the water beside it.
       parts.push(
         transformed(lobe, (m) =>
-          m.makeTranslation(side * span * 0.085, -0.12, length * 0.5 + 0.5),
+          m.makeTranslation(side * span * 0.05, -0.12, length * 0.42),
         ),
       );
     }
@@ -477,9 +575,9 @@ const manta: SpeciesDef = {
     parts.push(
       transformed(
         buildBody({
-          length: 5.6,
-          segments: 18,
-          radial: 8,
+          length: 5.6 * FORM.limb,
+          segments: 7,
+          radial: 6,
           radius(t) {
             const r = 0.02 + t * 0.2;
             return { x: r, y: r };
@@ -489,28 +587,34 @@ const manta: SpeciesDef = {
       ),
     );
 
-    let geometry = applyCountershading(mergeGeometries(parts), 0x33587f, 0xdfecf3, 0.46);
+    let geometry = applyCountershading(
+      toFacets(mergeGeometries(parts)),
+      0x33587f,
+      BELLY,
+      0.46,
+    );
 
-    geometry = overlayPattern(geometry, (x, y, z) => {
-      // Darkened wingtips. The same graphic device as a seabird's primaries:
-      // a clean dark band at the extremity that sharpens the silhouette and
-      // stops a large flat animal reading as one undifferentiated shape.
-      const tip = smooth(Math.abs(x), span * 0.3, span * 0.49) * 0.42;
+    // The gill slits are gone with the pleats, and for the same reason: five
+    // fine bars are texture, and there is none in this direction.
+    geometry = paintFacets(geometry, (x, _y, z) => {
+      // The outer fifth of each wing, as a hard band. The same graphic device
+      // as a seabird's primaries — a clean dark edge that sharpens the
+      // silhouette and stops a large flat animal reading as one shape.
+      if (Math.abs(x) > span * 0.4) return 0x1d3349;
 
-      // Gill slits: five dark bars either side of the underside, behind the
-      // mouth. Only visible from below, which is exactly when you want them.
-      if (y > -0.02) return 1 - tip;
-      const band = smooth(z, -length * 0.1, length * 0.3) * smooth(Math.abs(x), 0.3, 1.5);
-      if (band <= 0.01) return 1 - tip;
-      const phase = z * 2.6;
-      const slit = phase - Math.floor(phase);
-      const edge = Math.min(slit, 1 - slit);
-      return (1 - tip) * (1 - band * (1 - smooth(edge, 0.03, 0.16)) * 0.5);
+      // The cephalic lobes, this animal's accent: the two blunt horns either
+      // side of the mouth that nothing else in the ocean has.
+      if (z > length * 0.44 && Math.abs(x) < span * 0.14) return 0x3f6a94;
+
+      return null;
     });
 
+    // Set back from the nose for the same reason as the lobes: at this width
+    // the wing is comfortably wider than the pair, so the eyes sit in the body
+    // rather than beside it.
     geometry = attachDetails(
       geometry,
-      eyePair(0.1, span * 0.12, -0.04, length * 0.42),
+      eyePair(0.1, span * 0.1, -0.04, length * 0.34),
     );
 
     const swim = createSwimMaterial({
@@ -537,19 +641,21 @@ const turtle: SpeciesDef = {
   blurb: "Rows along in no particular hurry.",
   speedScale: 0.72,
   turnScale: 0.8,
-  viewDistance: 13,
+  viewDistance: 13 * FORM.length,
   build() {
-    const shellLength = 5.2;
+    const shellLength = 5.2 * FORM.length;
 
     const shell = buildBody({
       length: shellLength,
-      segments: 34,
-      radial: 30,
+      segments: FORM.segments,
+      radial: FORM.radial,
       radius(t) {
         // Skewed forward so the carapace is a teardrop — broadest ahead of
-        // centre, tapering to the rear — rather than a symmetric oval.
+        // centre, tapering to the rear — rather than a symmetric oval. Domed
+        // higher than before: the shell is the signature, so it keeps its
+        // height while the body under it shortens.
         const w = Math.pow(Math.max(0, Math.sin(Math.PI * Math.pow(t, 1.3))), 0.5);
-        return { x: 0.05 + w * 2.25, y: 0.04 + Math.pow(w, 0.8) * 0.92 };
+        return { x: 0.05 + w * 2.25, y: 0.04 + Math.pow(w, 0.8) * 1.16 };
       },
       // Moderately full sections: enough to give the margin a defined edge,
       // not so much that it reads as a rounded box.
@@ -569,14 +675,17 @@ const turtle: SpeciesDef = {
     // Neck and head, with a beaked snout.
     const head = transformed(
       buildBody({
-        length: 2.1,
-        segments: 18,
-        radial: 14,
+        length: 2.1 * FORM.limb,
+        segments: 8,
+        radial: FORM.radial,
         radius(t) {
-          // Slim neck, swelling to the skull, tapering to a hooked beak.
+          // Slim neck, swelling to the skull, tapering to a hooked beak. The
+          // skull takes the head bulk; a bigger head on a shorter neck is most
+          // of what makes this one read as a toy.
           const neck = 0.26 + 0.22 * smooth(t, 0.05, 0.5);
           const skull = 1 - 0.62 * smooth(t, 0.62, 1);
-          return { x: neck * skull * 1.05, y: neck * skull };
+          const head = headBulk(t);
+          return { x: neck * skull * 1.05 * head, y: neck * skull * head };
         },
         offsetY: (t) => -0.06 * smooth(t, 0.5, 1),
         sharpness: () => 2.3,
@@ -585,32 +694,47 @@ const turtle: SpeciesDef = {
     );
 
     let geometry = applyCountershading(
-      mergeGeometries([shell, head]),
+      toFacets(mergeGeometries([shell, head])),
       0x74924e,
       0xdcd9a4,
       0.42,
     );
 
-    // Scutes. The plates are laid out in a rough grid of latitude and longitude
-    // over the carapace, so darkening the seams of that grid reproduces the
-    // pattern without needing a texture or any extra geometry.
-    geometry = overlayPattern(geometry, (x, y, z) => {
-      // Carapace only: the head and the flat plastron carry different plates.
-      if (y < -0.28 || z > 2.3) return 1;
+    /*
+      Scutes, as whole groups of facets rather than as painted seams.
+
+      The plates sit in a rough grid of latitude and longitude over the
+      carapace. The old version darkened the seams of that grid, which was a
+      fine trick while the shell was smooth — but a seam is a thin line, and a
+      thin line drawn across chunky facets is exactly the texture this
+      direction refuses. So the grid now decides which *cell* a face belongs
+      to, and every face in a cell takes one colour. Alternating cells are
+      darker, so the plates read as plates and each one is a few flat faces.
+    */
+    geometry = paintFacets(geometry, (x, y, z) => {
+      // Carapace only: the head and the flat plastron are their own areas.
+      if (y < -0.28 || z > shellLength * 0.44) return null;
+
       const radius = Math.hypot(x, z);
-      if (radius < 0.25) return 1;
+      if (radius < 0.25) return null;
 
-      const longitude = ((Math.atan2(x, z) / Math.PI + 1) * 0.5) * 9;
-      const latitude = (Math.atan2(y + 0.3, radius) / (Math.PI * 0.5)) * 3.4;
+      const longitude = Math.round(((Math.atan2(x, z) / Math.PI + 1) * 0.5) * 9);
+      const latitude = Math.round((Math.atan2(y + 0.3, radius) / (Math.PI * 0.5)) * 3.4);
 
-      const du = Math.abs(longitude - Math.round(longitude));
-      const dv = Math.abs(latitude - Math.round(latitude));
-      const seam = Math.min(du, dv);
-
-      return 0.5 + 0.5 * smooth(seam, 0.015, 0.12);
+      // A checker over the plate grid: neighbours differ, so every seam is a
+      // colour change between whole plates and never a drawn line.
+      return (longitude + latitude) % 2 === 0 ? 0x4b6432 : null;
     });
 
-    geometry = attachDetails(geometry, eyePair(0.08, 0.23, 0.02, 3.62));
+    geometry = paintFacets(geometry, (_x, y, z) => {
+      // The plastron, this animal's accent: the flat cream underside.
+      if (y < -0.3 && z < shellLength * 0.44) return 0xdcd9a4;
+      // Darker tip on the beak.
+      if (z > shellLength * 0.66) return 0x4b6432;
+      return null;
+    });
+
+    geometry = attachDetails(geometry, eyePair(0.08, 0.23, 0.02, 3.62 * FORM.length));
 
     // The shell barely flexes; almost all the motion comes from the flippers.
     const swim = createSwimMaterial({
@@ -634,7 +758,7 @@ const turtle: SpeciesDef = {
       // Close to the carapace's own tone. Too far from it and the flippers
       // read as detached paddles rather than part of the animal.
       color: 0x6d8a4a,
-      flatShading: false,
+      flatShading: true,
     });
 
     interface Flipper {
@@ -662,7 +786,8 @@ const turtle: SpeciesDef = {
           span,
           spanAxis: "x",
           sign: side,
-          stations: 10,
+          stations: 5,
+          chordSegments: FORM.chord,
           // Broad near the shoulder, tapering to a rounded paddle tip.
           chord: (s) => chord * (1 - 0.55 * Math.pow(s, 1.6)),
           sweep: (s) => -chord * 0.42 * Math.pow(s, 1.35),
@@ -679,10 +804,13 @@ const turtle: SpeciesDef = {
     };
 
     // Front pair does the rowing; the back pair mostly trails and steers.
-    addFlipper(1, 1.4, 2.7, 1.2, 0, 0.48);
-    addFlipper(-1, 1.4, 2.7, 1.2, Math.PI, 0.48);
-    addFlipper(1, -1.55, 1.4, 0.85, Math.PI * 0.6, 0.2);
-    addFlipper(-1, -1.55, 1.4, 0.85, Math.PI * 1.6, 0.2);
+    // Shortened with the other limbs, so the shell stays the whole animal.
+    const fore = 2.7 * FORM.limb;
+    const hind = 1.4 * FORM.limb;
+    addFlipper(1, 1.4, fore, 1.2, 0, 0.48);
+    addFlipper(-1, 1.4, fore, 1.2, Math.PI, 0.48);
+    addFlipper(1, -1.55, hind, 0.85, Math.PI * 0.6, 0.2);
+    addFlipper(-1, -1.55, hind, 0.85, Math.PI * 1.6, 0.2);
 
     return {
       root,

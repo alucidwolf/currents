@@ -95,13 +95,18 @@ animal, it is a thing you have to already know")*
 
 ### 6. One art style, one world
 
-Smooth stylised forms, bright saturated colour, the cosy tabletop diorama. There
-is no second visual register, no unlockable skin set in another style, no
+Faceted low-poly forms, bright saturated colour, the cosy tabletop diorama.
+There is no second visual register, no unlockable skin set in another style, no
 seasonal reskin, no crossover. A good idea in a different style is a different
 project, not an addition to this one.
 
-*README, **Art direction**. This is also why the "STARDUST" space concept is
-tracked as a separate project rather than as a mode.*
+The direction changing does not weaken this rule — it is the rule working. One
+style was chosen over another and applied everywhere, rather than the two being
+allowed to live side by side.
+
+*`design-system/START-HERE.md` is the authority; the README's **Art direction**
+summarises it. This is also why the "STARDUST" space concept is tracked as a
+separate project rather than as a mode.*
 
 ### 7. Rare things stay rare
 
@@ -184,20 +189,14 @@ risk is the palette going muddy, which has happened once before, and that is an
 argument for building the palette check first rather than an argument against
 the feature.
 
-**The visual direction itself is currently contested.** An exported design
-system appeared in `design-system/` on 2026-09-28, untracked, and it states that
-it replaces two of the README's art rules: "smooth stylised, not faceted
-low-poly" becomes faceted and toy-like, and "recognisable anatomy" becomes
-recognisable silhouette. Refusal 6 above and the README's **Art direction**
-section describe the smooth direction, so the two cannot both be authoritative.
+**The visual direction was settled on 2026-09-28.** `design-system/` is the
+approved direction: faceted and toy-like, after TUNIC. It reverses the README's
+"smooth stylised, not faceted low-poly" rule, and the README now says so and
+defers to it. Refusal 6 is unchanged in force — *one* style, and this is the
+one.
 
-Refusal 6 is unaffected in principle — *one* style, whichever it is — but the
-style it names would change, and so would the section it points at. Nothing has
-been adopted, moved or committed on the strength of that folder.
-
-> **All three of these need the owner's decision before they are treated as
-> settled: the scripted opening, the colour variants, and which art direction
-> is authoritative.** Once decided, this notice goes and the decisions stand.
+> **Two of these still need the owner's decision: the scripted opening and the
+> colour variants.** Once decided, this notice goes and the decisions stand.
 
 ---
 

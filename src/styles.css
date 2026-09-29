@@ -1,10 +1,89 @@
-:root {
+/*
+  Tokens, from design-system/tokens.css.
+
+  The five names the rest of the app already used — --ink, --ink-dim, --deep,
+  --glass, --edge — keep their names and their exact values, so nothing that
+  referred to them has to change. Everything below them is new.
+
+  The scene's own colours are deliberately not here. tokens.json records them
+  for reference, but src/core/config.ts is where they live and the only place
+  they are edited; copying them into the stylesheet would make two sources of
+  truth for one colour. Where the interface wants to agree with the water it
+  uses a literal that is already the scene's: --leaf is the kelp green and --sun
+  is the sand.
+*/
+:root,
+[data-theme="deep"] {
   --ink: #e8f4f8;
   --ink-dim: #8fa9b4;
   --deep: #061c2c;
   --glass: rgba(8, 28, 42, 0.58);
   --edge: rgba(160, 214, 232, 0.22);
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --edge-hover: rgba(160, 214, 232, 0.55);
+  --edge-current: rgba(160, 214, 232, 0.72);
+  --accent-sea: #9fd6e8;
+
+  /* The three tones a block is built from: lit top, face, shadowed lip. */
+  --panel: #0e3d59;
+  --panel-hi: #1d6d8c;
+  --panel-lo: #051521;
+  --edge-solid: #4f8fa8;
+
+  --leaf: #a3c46c;
+  --on-leaf: #132410;
+  --sun: #f0d99a;
+  --on-sun: #3a2a08;
+  --coral: #e8836b;
+  --violet: #a87fc6;
+}
+
+/*
+  The storybook theme: cream paper and navy ink, for anything that should read
+  as printed matter rather than as a control over water. Nothing uses it yet —
+  it is here because it is part of the approved token set, and because the next
+  person to build an about page should not have to derive it again. Never put
+  it on the HUD.
+*/
+[data-theme="paper"] {
+  --deep: #f3f4ee;
+  --ink: #1b3a5b;
+  --ink-dim: #4c6478;
+  --glass: rgba(243, 244, 238, 0.72);
+  --edge: rgba(27, 58, 91, 0.22);
+  --edge-hover: rgba(27, 58, 91, 0.55);
+  --edge-current: rgba(27, 58, 91, 0.72);
+  --accent-sea: #2a6088;
+  --panel: #fbf8ec;
+  --panel-hi: #ffffff;
+  --panel-lo: #d8d3bb;
+  --edge-solid: #8c8a74;
+  --leaf: #4f7a2a;
+  --on-leaf: #ffffff;
+  --sun: #8a5a00;
+  --on-sun: #ffffff;
+  --coral: #b2472f;
+  --violet: #6d4a8c;
+}
+
+:root {
+  --space-1: 0.3rem;
+  --space-2: 0.55rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.6rem;
+
+  /* How far each corner is cut. Small things are cut less, or they lose shape. */
+  --bevel-xs: 4px;
+  --bevel-sm: 7px;
+  --bevel-md: 11px;
+  --bevel-lg: 18px;
+
+  --font-display: "Fredoka", ui-rounded, ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Nunito", ui-rounded, ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 * {
@@ -18,7 +97,7 @@ body {
   overflow: hidden;
   background: var(--deep);
   color: var(--ink);
-  font-family: var(--font);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -37,7 +116,106 @@ body {
   cursor: grabbing;
 }
 
-/* -- HUD ------------------------------------------------------------------ */
+/* -- The facet ------------------------------------------------------------- */
+
+/*
+  Every control on this page is the same object: a small block with its corners
+  cut off, sitting on the table.
+
+  It is one element. The element's own background is the outline colour, and a
+  ::before inset by 1px carries the face — so the 1px ring is the parent showing
+  through rather than a border, which matters because a clipped box cannot draw
+  one. The face is a gradient rather than a flat fill: 3px of lit edge along the
+  top and a 4px shadowed lip along the bottom, which is the whole reason it
+  reads as a chunky piece rather than a rectangle. It is not a drop shadow and
+  must not be replaced by one.
+
+  `isolation: isolate` is what makes the negative z-index safe. It confines the
+  ::before to this element's own stacking context, so the face paints over the
+  outline and under the text instead of disappearing behind the page.
+*/
+.facet {
+  --facet-bevel: var(--bevel-md);
+  --facet-face: var(--panel);
+  position: relative;
+  isolation: isolate;
+  background: var(--edge-solid);
+  clip-path: polygon(
+    var(--facet-bevel) 0,
+    calc(100% - var(--facet-bevel)) 0,
+    100% var(--facet-bevel),
+    100% calc(100% - var(--facet-bevel)),
+    calc(100% - var(--facet-bevel)) 100%,
+    var(--facet-bevel) 100%,
+    0 calc(100% - var(--facet-bevel)),
+    0 var(--facet-bevel)
+  );
+}
+
+.facet::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    var(--panel-hi) 0 3px,
+    var(--facet-face) 3px calc(100% - 4px),
+    var(--panel-lo) calc(100% - 4px) 100%
+  );
+  clip-path: inherit;
+}
+
+/* Over living water rather than over the page: the ocean stays readable. */
+.facet--glass {
+  --facet-face: var(--glass);
+}
+
+.facet--glass::before {
+  backdrop-filter: blur(6px);
+}
+
+/*
+  A clipped tile cuts off its own focus ring, so a facet shows focus by turning
+  its outline colour to sun instead of drawing one outside itself.
+*/
+.facet:focus-visible {
+  background: var(--sun);
+  outline: none;
+}
+
+/*
+  Controls that sit *inside* a facet are clipped by it, so their focus ring is
+  drawn on the inside edge. An outside ring would be cut off by the parent's
+  corners at exactly the moment it is needed.
+*/
+.sound__toggle:focus-visible,
+.sound__volume:focus-visible,
+.world-controls__button:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: -2px;
+}
+
+/* -- Keycap ---------------------------------------------------------------- */
+
+/*
+  The letter you could press instead. Cut like everything else, just less: at
+  this size a bevel-md would eat the character.
+*/
+.key {
+  --facet-bevel: var(--bevel-xs);
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.4rem 3px;
+  font: 800 0.68rem/1 var(--font-sans);
+  letter-spacing: 0.04em;
+  color: var(--sun);
+  vertical-align: middle;
+}
+
+/* -- HUD ------------------------------------------------------------------- */
 
 .hud {
   position: fixed;
@@ -77,22 +255,30 @@ body {
 
 .hud__hints {
   display: flex;
-  gap: 1.25rem;
+  gap: var(--space-5);
   flex-wrap: wrap;
+  align-items: center;
   color: var(--ink-dim);
   align-self: flex-start;
 }
 
-.hud__hints b {
+.hud__hints > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* A gesture, named in the same weight as a key but without the block. */
+.hud__hints b:not(.key) {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .hud__meta {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  gap: 1rem;
+  gap: var(--space-4);
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
 }
@@ -105,41 +291,50 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.55rem;
+  gap: var(--space-2);
 }
 
-/* The same glass pill as the animal button, smaller: a setting, not a choice. */
+/* -- Sound ----------------------------------------------------------------- */
+
+/* The same block as the animal button, smaller: a setting, not a choice. */
 .sound {
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.3rem 0.75rem 0.3rem 0.35rem;
-  background: var(--glass);
-  border: 1px solid var(--edge);
-  border-radius: 999px;
-  backdrop-filter: blur(6px);
+  gap: var(--space-2);
+  padding: 0.35rem 0.85rem 0.45rem 0.4rem;
 }
 
 .sound__toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.25rem 0.6rem;
   background: transparent;
   border: 0;
-  border-radius: 999px;
   color: var(--ink-dim);
   font: inherit;
   cursor: pointer;
-  transition: color 0.25s ease, background 0.25s ease;
+  transition: color 0.25s ease;
+}
+
+/* A cut pip rather than a dot: there are no circles in this interface. */
+.sound__toggle::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  background: var(--ink-dim);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 }
 
 .sound__toggle[data-on="true"] {
   color: var(--ink);
 }
 
-.sound__toggle:hover,
-.sound__toggle:focus-visible {
-  background: rgba(160, 214, 232, 0.12);
-  outline: none;
+.sound__toggle[data-on="true"]::before {
+  background: var(--coral);
 }
 
 .sound__toggle:disabled {
@@ -149,32 +344,30 @@ body {
 
 .sound__volume {
   width: 5.5rem;
-  accent-color: #9fd6e8;
+  accent-color: var(--accent-sea);
   cursor: pointer;
 }
 
-/* The same pill again, for the two things that act on the world itself. */
+/* -- Pause and share ------------------------------------------------------- */
+
+/* The same block again, for the two things that act on the world itself. */
 .world-controls {
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.3rem 0.4rem;
-  background: var(--glass);
-  border: 1px solid var(--edge);
-  border-radius: 999px;
-  backdrop-filter: blur(6px);
+  gap: var(--space-1);
+  padding: 0.35rem 0.5rem 0.45rem;
 }
 
 .world-controls__button {
+  appearance: none;
   padding: 0.25rem 0.6rem;
   background: transparent;
   border: 0;
-  border-radius: 999px;
   color: var(--ink-dim);
   font: inherit;
   cursor: pointer;
-  transition: color 0.25s ease, background 0.25s ease;
+  transition: color 0.25s ease;
 }
 
 /*
@@ -187,36 +380,32 @@ body {
   color: var(--ink);
 }
 
-.world-controls__button:hover,
-.world-controls__button:focus-visible {
-  background: rgba(160, 214, 232, 0.12);
-  outline: none;
-}
-
 /*
-  A hairline between the two, because "play" and "copy link" next to each other
-  read as one sentence otherwise. Its own element rather than a border, so it can
-  be shorter than the buttons are tall.
+  A cut between the two, because "play" and "copy link" next to each other read
+  as one sentence otherwise. Its own element rather than a border, so it can be
+  shorter than the buttons are tall.
 */
 .world-controls__rule {
   width: 1px;
   height: 0.85rem;
-  background: var(--edge);
+  background: var(--edge-solid);
 }
 
 /*
   Both labels change as they are used — "pause" to "play", "copy link" to
-  whichever of three things happened — and each change resizes the pill, which
+  whichever of two things happened — and each change resizes the block, which
   drags the other button sideways under the cursor that just pressed it. A floor
-  wide enough for the longest label each can hold keeps the pill still.
+  wide enough for the longest label each can hold keeps it still.
 */
 #pause-toggle {
   min-width: 3.6rem;
 }
 
 #share-link {
-  min-width: 6.6rem;
+  min-width: 7.8rem;
 }
+
+/* -- Announce -------------------------------------------------------------- */
 
 /*
   The name of the animal you just switched to. Centred low, out of the way of
@@ -230,8 +419,10 @@ body {
   text-align: center;
   pointer-events: none;
   color: var(--ink);
-  font-size: 1.05rem;
+  font: 600 1.05rem/1.3 var(--font-display);
   letter-spacing: 0.16em;
+  /* Tracking adds the gap after the last letter too; this recentres it. */
+  text-indent: 0.16em;
   text-transform: uppercase;
   text-shadow: 0 1px 12px rgb(0 0 0 / 45%);
   opacity: 0;
@@ -244,19 +435,28 @@ body {
   transition: opacity 0.14s ease;
 }
 
+/* A cut bar under the name, the one piece of warmth in the middle of the screen. */
+.announce::after {
+  content: "";
+  display: block;
+  margin: 0.45rem auto 0;
+  width: 2.2rem;
+  height: 4px;
+  background: var(--sun);
+  clip-path: polygon(4px 0, calc(100% - 4px) 0, 100% 100%, 0 100%);
+}
+
+/* -- Stats ----------------------------------------------------------------- */
+
 .stats {
+  --facet-bevel: var(--bevel-sm);
   position: fixed;
   top: clamp(0.9rem, 2.5vw, 1.6rem);
   right: clamp(0.9rem, 2.5vw, 1.6rem);
   margin: 0;
-  padding: 0.7rem 0.9rem;
-  background: var(--glass);
-  border: 1px solid var(--edge);
-  border-radius: 0.55rem;
-  backdrop-filter: blur(9px);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
-  line-height: 1.55;
+  padding: 0.7rem 0.9rem 0.8rem;
+  font: 400 0.72rem/1.55 var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
   pointer-events: none;
   white-space: pre;
@@ -270,39 +470,34 @@ body {
 */
 .animal-trigger {
   pointer-events: auto;
+  appearance: none;
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.5rem 0.9rem 0.5rem 0.7rem;
-  background: var(--glass);
-  border: 1px solid var(--edge);
-  border-radius: 999px;
+  padding: 0.55rem 1rem 0.65rem 0.8rem;
+  border: 0;
   color: var(--ink);
   font: inherit;
   cursor: pointer;
-  backdrop-filter: blur(6px);
-  transition:
-    border-color 0.25s ease,
-    background 0.25s ease,
-    transform 0.25s ease;
+  transition: transform 0.25s ease, background 0.25s ease;
 }
 
-.animal-trigger:hover,
-.animal-trigger:focus-visible {
+/* Lifting the block off the table, rather than glowing. */
+.animal-trigger:hover {
   transform: translateY(-2px);
-  border-color: rgba(160, 214, 232, 0.55);
-  background: rgba(14, 44, 64, 0.78);
-  outline: none;
+  background: var(--edge-hover);
 }
 
-/* A ray in outline: the same animal as the mark, at a size where nothing but a
-   silhouette would survive anyway. */
+/*
+  A ray in silhouette: the same animal as the mark, at a size where nothing but
+  a silhouette would survive anyway. Leaf green, because on this page leaf means
+  "this one, the one you are".
+*/
 .animal-trigger__icon {
   width: 1.15rem;
   height: 1.15rem;
   flex: none;
-  background: currentcolor;
-  opacity: 0.75;
+  background: var(--leaf);
   clip-path: polygon(
     50% 0%,
     72% 22%,
@@ -325,15 +520,14 @@ body {
 }
 
 .animal-trigger__caption {
-  font-size: 0.62rem;
+  font: 700 0.62rem/1.15 var(--font-sans);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-dim);
 }
 
 .animal-trigger__name {
-  font-size: 0.86rem;
-  font-weight: 500;
+  font: 700 0.86rem/1.15 var(--font-sans);
 }
 
 .picker {
@@ -367,14 +561,13 @@ body {
 }
 
 .picker__panel {
+  --facet-bevel: var(--bevel-lg);
   /* A width, not just a maximum: centring shrinks the panel to its contents,
      and the card grid will happily collapse to one column to oblige. */
   width: min(56rem, 100%);
   padding: clamp(1.2rem, 4vw, 1.9rem);
-  background: rgba(8, 30, 45, 0.82);
-  border: 1px solid var(--edge);
-  border-radius: 1.1rem;
-  box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
+  /* A cut box clips its own box-shadow, so the lift is a filter instead. */
+  filter: drop-shadow(0 24px 60px rgb(0 0 0 / 45%));
   /* Rises very slightly into place, so it arrives rather than appears. */
   transform: translateY(0.6rem);
   transition: transform 0.28s ease;
@@ -382,8 +575,7 @@ body {
 
 .picker__title {
   margin: 0 0 clamp(0.9rem, 3vw, 1.3rem);
-  font-size: clamp(1rem, 3vw, 1.2rem);
-  font-weight: 300;
+  font: 500 clamp(1rem, 3vw, 1.2rem)/1.25 var(--font-display);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -392,67 +584,66 @@ body {
 .picker__choices {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .picker__card {
-  position: relative;
+  --facet-face: var(--glass);
   appearance: none;
-  padding: 1rem 0.95rem;
-  background: var(--glass);
-  border: 1px solid var(--edge);
-  border-radius: 0.75rem;
+  display: block;
+  width: 100%;
+  /* Room on the right for the keycap, which sits over the corner. */
+  padding: 1rem 2.6rem 1.1rem 0.95rem;
+  border: 0;
   color: var(--ink);
-  font-family: inherit;
+  font-family: var(--font-sans);
   text-align: left;
   cursor: pointer;
-  transition:
-    transform 0.25s ease,
-    border-color 0.25s ease,
-    background 0.25s ease;
+  transition: transform 0.25s ease, background 0.25s ease;
 }
 
-.picker__card:hover,
-.picker__card:focus-visible {
+.picker__card:hover {
   transform: translateY(-3px);
-  border-color: rgba(160, 214, 232, 0.55);
-  background: rgba(14, 44, 64, 0.72);
-  outline: none;
+  background: var(--edge-hover);
 }
 
+/* The one you already are: a leaf outline, and a leaf bar along the bottom. */
 .picker__card[data-current="true"] {
-  border-color: rgba(160, 214, 232, 0.72);
-  background: rgba(22, 60, 82, 0.78);
+  background: var(--leaf);
+}
+
+.picker__card[data-current="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0.95rem;
+  bottom: 0.55rem;
+  width: 1.4rem;
+  height: 3px;
+  background: var(--leaf);
 }
 
 .picker__key {
   position: absolute;
   top: 0.6rem;
   right: 0.7rem;
-  font-size: 0.68rem;
-  color: var(--ink-dim);
-  opacity: 0.7;
 }
 
 .picker__name {
   display: block;
-  font-size: 0.98rem;
-  font-weight: 500;
   margin-bottom: 0.3rem;
+  font: 600 0.98rem/1.25 var(--font-display);
 }
 
 .picker__blurb {
   display: block;
-  font-size: 0.76rem;
-  line-height: 1.45;
+  font: 500 0.76rem/1.45 var(--font-sans);
   color: var(--ink-dim);
 }
 
 .picker__foot {
   margin: clamp(0.9rem, 3vw, 1.2rem) 0 0;
-  font-size: 0.74rem;
+  font: 500 0.74rem/1.45 var(--font-sans);
   color: var(--ink-dim);
-  opacity: 0.8;
 }
 
 /* -- Title card ------------------------------------------------------------ */
@@ -489,13 +680,26 @@ body {
 
 .title-card__word {
   margin: 0;
-  font-size: clamp(2rem, 7vw, 3.6rem);
-  font-weight: 300;
+  font: 500 clamp(2rem, 7vw, 3.6rem)/1.05 var(--font-display);
   letter-spacing: 0.16em;
   /* Tracking adds the gap after the last letter too; this recentres it. */
   text-indent: 0.16em;
   text-transform: uppercase;
   text-shadow: 0 2px 18px rgb(0 0 0 / 50%);
+}
+
+/* Leaf, sun and coral in one cut bar: the palette, stated once, on the way in. */
+.title-card__rule {
+  margin-top: 0.8rem;
+  width: 5.5rem;
+  height: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--leaf) 0 33%,
+    var(--sun) 33% 66%,
+    var(--coral) 66%
+  );
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 100%, 0 100%);
 }
 
 /* Short viewports have little enough water to look at as it is. */
@@ -509,5 +713,16 @@ body {
   .hud,
   .title-card {
     transition-duration: 0.01ms;
+  }
+
+  .animal-trigger,
+  .picker__card {
+    transition-duration: 0.01ms;
+  }
+
+  /* A lift is movement for its own sake; the colour change still reads. */
+  .animal-trigger:hover,
+  .picker__card:hover {
+    transform: none;
   }
 }

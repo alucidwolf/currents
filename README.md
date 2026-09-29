@@ -210,13 +210,38 @@ reports the world starting itself twice.
 
 ## Art direction
 
-Smooth stylised, not faceted low-poly. Simple rounded forms, smooth shading,
-and **bright saturated colour** — detail comes from silhouette and clean colour
-blocking rather than from surface texture or polygon count.
+> **The authority is [`design-system/START-HERE.md`](design-system/START-HERE.md)**
+> and the two documents it points at. This section is the summary and the
+> reasoning; where they disagree, the design system wins.
+>
+> Work in progress. The interface and the animals have been rebuilt in this
+> direction. The world — seabed, props, fish, water surface, caustics, shafts
+> and motes — has not, so the scene around the animals still looks like the
+> previous one. The order is UI, then creatures, then world.
+
+**Faceted and toy-like.** Surfaces are low-poly and flat-shaded, so each polygon
+is one clean plane of colour, and the facets are large enough to count on the
+body. Colour is **bright and saturated**, in flat hard-edged areas — detail comes
+from silhouette and clean colour blocking rather than from texture or polygon
+count.
+
+This reverses what this section used to say. It read "smooth stylised, not
+faceted low-poly", and that rule is now the opposite: faceted is the target,
+not the thing to avoid. Everything else below survived the change unaltered,
+which is worth noticing — the lighting rules were never about the surfaces.
+
+What the direction carries over from TUNIC is a way of building a character,
+never the character: toy proportions with an oversized head and forebody, one
+signature shape kept at full size while everything else shrinks, small solid
+dot eyes with no other face, and four-part colour blocking — a saturated body,
+a cream underside, darker tips, one bold accent. Take the principles, never the
+figure: no fox, no clothes or accessories on the animals, and none of its
+glyphs anywhere in the scene.
 
 **The target is a cosy tabletop diorama**, after TUNIC. The thing that produces
-that reading is not the models — chunky low-poly forms on their own just look
-like chunky low-poly forms — it is a **shallow depth of field**, the same trick
+that reading is not the models on their own — chunky low-poly forms by
+themselves just look like chunky low-poly forms — it is a **shallow depth of
+field**, the same trick
 that makes a tilt-shift photograph of a real street look like a toy. Focus
 follows the animal, so it stays crisp wherever the camera orbits while the water
 in front and the reef behind go soft. Underwater that is also the honest thing
@@ -249,6 +274,56 @@ Depth reads as *bluer*, never darker: the far distance is a saturated blue, not
 black. Animals are countershaded with strongly contrasting values and carry one
 graphic accent each — the humpback's white pectorals, the ray's dark wingtips —
 in the way a seabird's dark primaries read against a pale body.
+
+### How an animal gets its colour
+
+Three steps, in an order that matters more than it looks (`src/creatures/shapes.ts`).
+
+**`toFacets`** splits every shared vertex, so each triangle owns its corners and
+`computeVertexNormals` gives all three the face's own normal. Everything after
+this depends on it.
+
+**`applyCountershading`** then decides one tone per face rather than one per
+vertex, and snaps the result to four flat tones. Both halves are needed. Shading
+first and flattening afterwards *seems* equivalent and is not — the shading
+would still have been computed against smooth normals, and the two triangles of
+a single quad would land on visibly different tones, which draws a sawtooth down
+the length of the animal instead of a band. And without the snapping, a gradient
+painted one face at a time is still a gradient: the animal comes out airbrushed
+in facets, which is neither one thing nor the other.
+
+**`paintFacets`** lays the hard markings over the top — tips and the one accent —
+choosing at each face's centre, so no marking can end halfway across a facet.
+
+What went with the old smooth bodies: the whale's ventral pleats, the ray's gill
+slits and the turtle's painted scute seams. Every one was a fine line or a fine
+repeating stripe — surface texture achieved without a texture, which was clever
+at thirty radial segments and aliases into noise at nine. The turtle's scutes
+came back as whole groups of faces instead, which is what they should have been.
+
+### The interface
+
+The same direction, in two dimensions. Every control is a **facet**: a small
+block with its corners cut off, a 1px outline, a 3px lit band along the top and
+a 4px shadowed lip underneath. The lip is what makes it read as a chunky piece
+sitting on a table rather than as a rectangle, and it is not a drop shadow — do
+not replace it with one.
+
+There are no rounded corners and no circles. Every `border-radius: 999px` pill
+is gone; decorative shapes are cut too, which is why the sound pip is a diamond
+and the rules under the announce and the title are trapezoids.
+
+Colour arrives in small doses at full strength on dark ground: `leaf` means
+*this one, the one you are* — the current card, the trigger's ray. `sun` is
+focus and keycaps. `coral` and `violet` are marks only, never body text.
+Warmth is carried by highlights; the grounds stay blue. Names and titles are
+set in Fredoka, everything else in Nunito, and the stats overlay stays mono.
+
+One detail worth knowing before editing the CSS: a clipped tile cannot draw
+anything outside itself. That is why a focused facet turns its own outline
+`sun` instead of drawing a ring, why controls *inside* a facet draw their focus
+ring on the inside edge, and why the picker panel's lift is a `drop-shadow`
+filter rather than a `box-shadow`.
 
 ## The loading screen
 

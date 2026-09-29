@@ -30,6 +30,21 @@
     <meta name="twitter:card" content="summary_large_image" />
 
     <!--
+      Fredoka for names and titles, Nunito for everything else. Linked here
+      rather than imported from the stylesheet so the request goes out with the
+      document instead of waiting for the entry module to run.
+
+      The boot screen below deliberately does not use either. It has to be right
+      with nothing loaded at all, so it stays on a system stack.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@500;700;800&display=swap"
+    />
+
+    <!--
       Inline, and deliberately so. Everything else about this page arrives too
       late to prevent a flash: the stylesheet is imported from the entry module,
       so in development it is injected only once the JavaScript has run, and
@@ -175,11 +190,16 @@
     <canvas id="scene"></canvas>
 
     <div id="hud" class="hud" aria-live="polite">
+      <!--
+        Keys get a keycap — a small cut block with the key on it. Mouse
+        gestures do not: a drag is not something you can press, and putting it
+        on a keycap says it is.
+      -->
       <div class="hud__hints">
         <span><b>Drag</b> to look around</span>
-        <span><b>Right-hold</b> or <b>arrows</b> to steer</span>
+        <span><b>Right-hold</b> or <b class="facet key">arrows</b> to steer</span>
         <span><b>Scroll</b> to zoom</span>
-        <span><b>Tab</b> or the button below to change animal</span>
+        <span><b class="facet key">Tab</b> or the button below to change animal</span>
       </div>
       <div class="hud__meta">
         <span id="hud-seed"></span>
@@ -191,7 +211,7 @@
         -->
         <button
           id="animal-trigger"
-          class="animal-trigger"
+          class="facet facet--glass animal-trigger"
           type="button"
           aria-haspopup="dialog"
           aria-expanded="false"
@@ -209,7 +229,7 @@
             Sound starts on the first touch of the page, because browsers allow
             nothing before one. The switch and slider are remembered.
           -->
-          <div class="sound" role="group" aria-label="Sound">
+          <div class="facet facet--glass sound" role="group" aria-label="Sound">
             <button id="sound-toggle" class="sound__toggle" type="button" aria-pressed="true">
               sound on
             </button>
@@ -236,7 +256,7 @@
             "pause" or "play" into it, and either one fixed in the markup would
             be wrong half the time.
           -->
-          <div class="world-controls" role="group" aria-label="This ocean">
+          <div class="facet facet--glass world-controls" role="group" aria-label="This ocean">
             <button
               id="pause-toggle"
               class="world-controls__button"
@@ -267,7 +287,7 @@
       aria-label="Choose an animal"
       hidden
     >
-      <div class="picker__panel">
+      <div class="facet picker__panel">
         <h2 class="picker__title">Be something else</h2>
         <div id="picker-choices" class="picker__choices"></div>
         <p class="picker__foot">
@@ -283,7 +303,7 @@
     -->
     <div id="announce" class="announce" aria-live="polite"></div>
 
-    <pre id="stats" class="stats" hidden></pre>
+    <pre id="stats" class="facet facet--glass stats" hidden></pre>
 
     <!--
       Shown once over the opening swim, then gone. With no menu this is the only
@@ -299,6 +319,7 @@
         decoding="async"
       />
       <h1 class="title-card__word">Currents</h1>
+      <span class="title-card__rule" aria-hidden="true"></span>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

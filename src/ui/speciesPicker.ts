@@ -111,10 +111,11 @@ export class SpeciesPicker {
     SPECIES.forEach((species, index) => {
       const card = document.createElement("button");
       card.type = "button";
-      card.className = "picker__card";
+      // A cut tile, with the number it answers to sitting on its corner.
+      card.className = "facet picker__card";
       card.dataset.speciesId = species.id;
       card.innerHTML = `
-        <span class="picker__key" aria-hidden="true"></span>
+        <span class="facet key picker__key" aria-hidden="true"></span>
         <span class="picker__name"></span>
         <span class="picker__blurb"></span>
       `;

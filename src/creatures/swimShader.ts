@@ -11,10 +11,12 @@ import * as THREE from "three";
  * is the single detail that separates "swimming" from "wobbling".
  *
  * Normals are corrected analytically to match the bend. Under flat shading this
- * did not matter — face normals come from screen-space derivatives of the
+ * does not matter — face normals come from screen-space derivatives of the
  * already-displaced positions — but smooth shading reads the vertex normal
  * directly, and an uncorrected one makes a flexing body look as though the
- * light is sliding across a rigid object.
+ * light is sliding across a rigid object. Flat shading is now the default, so
+ * the correction is usually inert; it is kept because it is what makes the
+ * smooth path correct, and because it costs nothing to carry.
  */
 export type SwimMode = "vertical" | "lateral" | "wing";
 
@@ -62,9 +64,11 @@ const UNIFORM_DECL = /* glsl */ `
 export function createSwimMaterial(options: SwimMaterialOptions): SwimMaterial {
   const material = new THREE.MeshLambertMaterial({
     color: options.color,
-    // Smooth by default now: the bodies carry enough segments that faceting
-    // reads as cheapness rather than style.
-    flatShading: options.flatShading ?? false,
+    // Faceted by default. The bodies now carry few enough segments that each
+    // face is meant to be seen and counted, and the colour is baked per face
+    // to match — smooth shading would round off the very edges the shapes are
+    // built to show.
+    flatShading: options.flatShading ?? true,
     vertexColors: options.vertexColors ?? false,
   });
 

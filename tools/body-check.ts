@@ -38,12 +38,39 @@ interface Hole {
   radius: number;
 }
 
+/**
+ * The triangle list, whichever form the geometry arrives in.
+ *
+ * Flat shading wants one colour per face, which wants one vertex per face, so
+ * the bodies spend part of their construction non-indexed. They happen to come
+ * back indexed — attaching the eyes rebuilds an index — so nothing here is
+ * currently load-bearing. It is a trap left disarmed rather than one sprung.
+ *
+ * Both tests below used to give up the moment they found no index, and they
+ * gave up differently, which is the worst of it: the hole test returned "no
+ * holes", passing anything it could not read, while the volume test returned
+ * zero and failed as "inside-out" — the wrong answer and the wrong reason. One
+ * lies by omission and the other by accusation.
+ *
+ * A synthetic index is honest here only because of the welding below. Every
+ * corner is its own vertex in a non-indexed mesh, so without fusing coincident
+ * positions back together, every edge in the body would look like the rim of a
+ * hole. With it, a seam reads as a seam: a non-indexed copy of a body reports
+ * the same volume, to four decimal places, as the indexed original.
+ */
+function triangleIndex(geometry: THREE.BufferGeometry): ArrayLike<number> {
+  const index = geometry.getIndex();
+  if (index) return index.array;
+
+  const count = geometry.getAttribute("position").count;
+  const synthetic = new Uint32Array(count);
+  for (let i = 0; i < count; i++) synthetic[i] = i;
+  return synthetic;
+}
+
 /** Edges belonging to exactly one triangle — the rim of a hole. */
 function findHoles(geometry: THREE.BufferGeometry): Hole[] {
-  const index = geometry.getIndex();
-  if (!index) return [];
-
-  const idx = index.array;
+  const idx = triangleIndex(geometry);
   const counts = new Map<number, number>();
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
 
@@ -153,11 +180,8 @@ function findHoles(geometry: THREE.BufferGeometry): Hole[] {
  * inward, to its negative. Only meaningful once the mesh is closed.
  */
 function signedVolume(geometry: THREE.BufferGeometry): number {
-  const index = geometry.getIndex();
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
-  if (!index) return 0;
-
-  const idx = index.array;
+  const idx = triangleIndex(geometry);
   let total = 0;
 
   for (let i = 0; i < idx.length; i += 3) {

@@ -577,6 +577,16 @@ export function applyCountershading(
   belly: number,
   /** Pushes the transition up or down the body. */
   bias = 0.5,
+  /**
+   * How many flat tones the ramp is allowed, or 0 for a continuous gradient.
+   *
+   * A gradient with no steps is still a gradient, even painted one face at a
+   * time: the animal comes out airbrushed in facets, which is neither one
+   * thing nor the other. Snapping to a few tones makes the flank read as areas
+   * of colour with edges between them, which is the whole point — the same
+   * reason the seabed is banded rather than ramped.
+   */
+  steps = 4,
 ): THREE.BufferGeometry {
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
   const normal = geometry.getAttribute("normal") as THREE.BufferAttribute | undefined;
@@ -592,52 +602,121 @@ export function applyCountershading(
 
   const colors = new Float32Array(position.count * 3);
 
-  for (let i = 0; i < position.count; i++) {
+  // One decision per face when the body has been faceted, one per vertex when
+  // it has not. Sampling at the middle of a face rather than at each corner is
+  // what stops a marking ending halfway across a facet.
+  const stride = geometry.getIndex() ? 1 : 3;
+
+  for (let i = 0; i < position.count; i += stride) {
+    let y = 0;
+    let facing = 0;
+    for (let k = 0; k < stride; k++) {
+      y += position.getY(i + k);
+      facing += normal ? normal.getY(i + k) : 0;
+    }
+    y /= stride;
+    facing /= stride;
+
     // Which way the surface faces is the primary signal, not how high it sits.
     // On a flat-bodied animal like a ray, the top of the wing and its
     // underside are at almost the same height — keyed to height alone the
     // whole wing comes out one colour and the countershading vanishes exactly
     // where it matters most. Facing direction separates them cleanly.
-    const facing = normal ? normal.getY(i) : 0;
     const byNormal = THREE.MathUtils.smoothstep(facing, -0.4, 0.45);
 
-    // Height still contributes a little, so rounded bodies keep a gradient
-    // down the flank rather than a hard band where the normal flips.
-    const height = (position.getY(i) - minY) / span;
+    // Height still contributes a little, so rounded bodies keep a sense of
+    // turning down the flank rather than flipping at one hard line.
+    const height = (y - minY) / span;
     const byHeight = THREE.MathUtils.smoothstep(height, bias - 0.38, bias + 0.38);
 
-    const k = byNormal * 0.72 + byHeight * 0.28;
+    const blend = byNormal * 0.72 + byHeight * 0.28;
+    const k = steps > 1 ? Math.round(blend * (steps - 1)) / (steps - 1) : blend;
     mixed.copy(bellyColor).lerp(backColor, k);
 
-    colors[i * 3] = mixed.r;
-    colors[i * 3 + 1] = mixed.g;
-    colors[i * 3 + 2] = mixed.b;
+    for (let n = 0; n < stride; n++) {
+      colors[(i + n) * 3] = mixed.r;
+      colors[(i + n) * 3 + 1] = mixed.g;
+      colors[(i + n) * 3 + 2] = mixed.b;
+    }
   }
 
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   return geometry;
 }
 
+/*
+  `overlayPattern` used to live here: it multiplied each vertex colour by a
+  factor sampled at that vertex, which is how the turtle got its scute seams,
+  the whale its ventral pleats and the ray its gill slits.
+
+  It is gone with them. Every one of those was a fine line or a fine repeating
+  stripe — surface texture achieved without a texture, which was clever while
+  the bodies were smooth. Against nine radial segments the same patterns alias
+  into noise, and the direction they would be serving has no texture in it at
+  all. `paintFacets` below replaces it: whole faces, flat colour, hard edges.
+*/
+
 /**
- * Multiply the existing vertex colours by a per-position factor.
+ * Break a body into independent faces, each with its own normal.
  *
- * Runs after countershading, so markings ride on top of the base shading
- * rather than replacing it. This is how the turtle gets its scute seams, the
- * whale its ventral pleats and the ray its gill slits — all surface detail
- * that would otherwise need either geometry or a texture, and needs neither.
+ * Everything that colours an animal runs after this, and depends on it. Once
+ * no vertex is shared, `computeVertexNormals` gives all three corners of a
+ * triangle the same normal — the face's own — so a colour decided from the
+ * normal comes out constant across the face instead of sliding over it.
+ *
+ * Doing it in this order matters more than it looks. Shading first and
+ * flattening afterwards seems equivalent and is not: the shading would still
+ * have been computed against smooth normals, and the two triangles making up
+ * one quad would average to visibly different colours. The result was a
+ * sawtooth running the length of the animal, where the intent is a clean band.
+ *
+ * The cost is three vertices per triangle rather than a shared ring, and the
+ * faceted counts pay it back several times over — the whale body went from
+ * about two thousand triangles to under three hundred.
  */
-export function overlayPattern(
+export function toFacets(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  const flat = geometry.toNonIndexed();
+  geometry.dispose();
+  flat.computeVertexNormals();
+  return flat;
+}
+
+/**
+ * Paint whole faces one flat colour, decided at the centre of each face.
+ *
+ * This is how the four-part colour blocking lands: a back, a belly, darker
+ * tips and one accent, each a hard-edged area rather than a blend.
+ *
+ * Run it after `facetColours`, because it assumes no vertex is shared between
+ * faces. Sharing one would drag a neighbour's colour along with it and the
+ * edge would go soft again, which is the whole thing this exists to prevent.
+ *
+ * Deciding at the centroid rather than per corner is what makes the edges
+ * genuinely hard. A face is either inside a marking or outside it, so no
+ * marking can end halfway across a facet.
+ *
+ * Returning `null` leaves a face as it was.
+ */
+export function paintFacets(
   geometry: THREE.BufferGeometry,
-  shade: (x: number, y: number, z: number) => number,
+  pick: (x: number, y: number, z: number) => number | null,
 ): THREE.BufferGeometry {
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
   const color = geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
   if (!color) return geometry;
 
-  for (let i = 0; i < position.count; i++) {
-    const k = shade(position.getX(i), position.getY(i), position.getZ(i));
-    if (k === 1) continue;
-    color.setXYZ(i, color.getX(i) * k, color.getY(i) * k, color.getZ(i) * k);
+  const tint = new THREE.Color();
+
+  for (let i = 0; i + 2 < position.count; i += 3) {
+    const x = (position.getX(i) + position.getX(i + 1) + position.getX(i + 2)) / 3;
+    const y = (position.getY(i) + position.getY(i + 1) + position.getY(i + 2)) / 3;
+    const z = (position.getZ(i) + position.getZ(i + 1) + position.getZ(i + 2)) / 3;
+
+    const hex = pick(x, y, z);
+    if (hex === null) continue;
+
+    tint.setHex(hex);
+    for (let k = 0; k < 3; k++) color.setXYZ(i + k, tint.r, tint.g, tint.b);
   }
 
   color.needsUpdate = true;
