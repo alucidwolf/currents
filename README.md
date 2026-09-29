@@ -214,9 +214,10 @@ reports the world starting itself twice.
 > and the two documents it points at. This section is the summary and the
 > reasoning; where they disagree, the design system wins.
 >
-> Work in progress. The interface has been rebuilt in this direction; the
-> creatures and the world have not yet, so parts of the scene still look like
-> the previous one. The order is UI, then creatures, then world.
+> Work in progress. The interface and the animals have been rebuilt in this
+> direction. The world — seabed, props, fish, water surface, caustics, shafts
+> and motes — has not, so the scene around the animals still looks like the
+> previous one. The order is UI, then creatures, then world.
 
 **Faceted and toy-like.** Surfaces are low-poly and flat-shaded, so each polygon
 is one clean plane of colour, and the facets are large enough to count on the
@@ -273,6 +274,32 @@ Depth reads as *bluer*, never darker: the far distance is a saturated blue, not
 black. Animals are countershaded with strongly contrasting values and carry one
 graphic accent each — the humpback's white pectorals, the ray's dark wingtips —
 in the way a seabird's dark primaries read against a pale body.
+
+### How an animal gets its colour
+
+Three steps, in an order that matters more than it looks (`src/creatures/shapes.ts`).
+
+**`toFacets`** splits every shared vertex, so each triangle owns its corners and
+`computeVertexNormals` gives all three the face's own normal. Everything after
+this depends on it.
+
+**`applyCountershading`** then decides one tone per face rather than one per
+vertex, and snaps the result to four flat tones. Both halves are needed. Shading
+first and flattening afterwards *seems* equivalent and is not — the shading
+would still have been computed against smooth normals, and the two triangles of
+a single quad would land on visibly different tones, which draws a sawtooth down
+the length of the animal instead of a band. And without the snapping, a gradient
+painted one face at a time is still a gradient: the animal comes out airbrushed
+in facets, which is neither one thing nor the other.
+
+**`paintFacets`** lays the hard markings over the top — tips and the one accent —
+choosing at each face's centre, so no marking can end halfway across a facet.
+
+What went with the old smooth bodies: the whale's ventral pleats, the ray's gill
+slits and the turtle's painted scute seams. Every one was a fine line or a fine
+repeating stripe — surface texture achieved without a texture, which was clever
+at thirty radial segments and aliases into noise at nine. The turtle's scutes
+came back as whole groups of faces instead, which is what they should have been.
 
 ### The interface
 
