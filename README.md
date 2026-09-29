@@ -188,6 +188,12 @@ the controls would fade moments after being used, leaving a frozen ocean and no
 visible way to start it again. **H** still hides the overlay outright; somebody
 who switched it off has said what they want.
 
+A visit that opens paused gets no title card. The card counts down in frames and
+a paused page has none, so it would hang there until touched — a held screen in
+front of the ocean, which is the thing this page refuses to have. The cost is
+real and worth stating: the card is the only place the page says its own name,
+so a reduced-motion visitor never sees it.
+
 There are **two independent reasons the loop stops** — you asked, or nobody can
 see the page — and they are tracked separately on purpose. The obvious version
 of this keeps one `running` flag and resumes whenever the visibility handler

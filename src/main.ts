@@ -593,9 +593,15 @@ if (isAmbientMode()) {
   // Unattended display: start the overlay already faded rather than having it
   // sit there for the first few seconds of an empty room.
   hud.setAmbient();
-} else if (!resumed) {
+} else if (!resumed && !prefersReducedMotion()) {
   // A resumed swim is the same swim carrying on, so it does not get the logo
   // again.
+  //
+  // Neither does a visit that opens paused. The card counts down in frames and
+  // a paused page has none, so it would hang there until it was touched — a
+  // held screen in front of the ocean, which is the one thing this page has
+  // always refused to have. The cost is real: this is the only place the page
+  // says its own name, and a reduced-motion visitor never sees it.
   titleCard.show();
 }
 
