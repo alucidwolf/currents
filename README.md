@@ -210,13 +210,37 @@ reports the world starting itself twice.
 
 ## Art direction
 
-Smooth stylised, not faceted low-poly. Simple rounded forms, smooth shading,
-and **bright saturated colour** — detail comes from silhouette and clean colour
-blocking rather than from surface texture or polygon count.
+> **The authority is [`design-system/START-HERE.md`](design-system/START-HERE.md)**
+> and the two documents it points at. This section is the summary and the
+> reasoning; where they disagree, the design system wins.
+>
+> Work in progress. The interface has been rebuilt in this direction; the
+> creatures and the world have not yet, so parts of the scene still look like
+> the previous one. The order is UI, then creatures, then world.
+
+**Faceted and toy-like.** Surfaces are low-poly and flat-shaded, so each polygon
+is one clean plane of colour, and the facets are large enough to count on the
+body. Colour is **bright and saturated**, in flat hard-edged areas — detail comes
+from silhouette and clean colour blocking rather than from texture or polygon
+count.
+
+This reverses what this section used to say. It read "smooth stylised, not
+faceted low-poly", and that rule is now the opposite: faceted is the target,
+not the thing to avoid. Everything else below survived the change unaltered,
+which is worth noticing — the lighting rules were never about the surfaces.
+
+What the direction carries over from TUNIC is a way of building a character,
+never the character: toy proportions with an oversized head and forebody, one
+signature shape kept at full size while everything else shrinks, small solid
+dot eyes with no other face, and four-part colour blocking — a saturated body,
+a cream underside, darker tips, one bold accent. Take the principles, never the
+figure: no fox, no clothes or accessories on the animals, and none of its
+glyphs anywhere in the scene.
 
 **The target is a cosy tabletop diorama**, after TUNIC. The thing that produces
-that reading is not the models — chunky low-poly forms on their own just look
-like chunky low-poly forms — it is a **shallow depth of field**, the same trick
+that reading is not the models on their own — chunky low-poly forms by
+themselves just look like chunky low-poly forms — it is a **shallow depth of
+field**, the same trick
 that makes a tilt-shift photograph of a real street look like a toy. Focus
 follows the animal, so it stays crisp wherever the camera orbits while the water
 in front and the reef behind go soft. Underwater that is also the honest thing
@@ -249,6 +273,30 @@ Depth reads as *bluer*, never darker: the far distance is a saturated blue, not
 black. Animals are countershaded with strongly contrasting values and carry one
 graphic accent each — the humpback's white pectorals, the ray's dark wingtips —
 in the way a seabird's dark primaries read against a pale body.
+
+### The interface
+
+The same direction, in two dimensions. Every control is a **facet**: a small
+block with its corners cut off, a 1px outline, a 3px lit band along the top and
+a 4px shadowed lip underneath. The lip is what makes it read as a chunky piece
+sitting on a table rather than as a rectangle, and it is not a drop shadow — do
+not replace it with one.
+
+There are no rounded corners and no circles. Every `border-radius: 999px` pill
+is gone; decorative shapes are cut too, which is why the sound pip is a diamond
+and the rules under the announce and the title are trapezoids.
+
+Colour arrives in small doses at full strength on dark ground: `leaf` means
+*this one, the one you are* — the current card, the trigger's ray. `sun` is
+focus and keycaps. `coral` and `violet` are marks only, never body text.
+Warmth is carried by highlights; the grounds stay blue. Names and titles are
+set in Fredoka, everything else in Nunito, and the stats overlay stays mono.
+
+One detail worth knowing before editing the CSS: a clipped tile cannot draw
+anything outside itself. That is why a focused facet turns its own outline
+`sun` instead of drawing a ring, why controls *inside* a facet draw their focus
+ring on the inside edge, and why the picker panel's lift is a `drop-shadow`
+filter rather than a `box-shadow`.
 
 ## The loading screen
 
